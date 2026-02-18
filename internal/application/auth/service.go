@@ -1,0 +1,233 @@
+package auth
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"math/big"
+	"time"
+
+	"github.com/go-api-nosql/internal/domain"
+	"github.com/go-api-nosql/internal/infrastructure/dynamo"
+	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
+	"github.com/go-api-nosql/internal/infrastructure/smtp"
+	"github.com/go-api-nosql/internal/infrastructure/sns"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+)
+
+type PasswordRecoveryRequest struct {
+	Email       *string `json:"email"`
+	PhoneNumber *string `json:"phone_number"`
+}
+
+type ValidateOTPRequest struct {
+	OTP        string  `json:"otp" validate:"required"`
+	DeviceUUID *string `json:"device_uuid"`
+	Email      *string `json:"email"`
+}
+
+type ChangePasswordRequest struct {
+	NewPassword string `json:"new_password" validate:"required"`
+}
+
+type Service interface {
+	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
+	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (bearer string, session *domain.Session, err error)
+	ChangePassword(ctx context.Context, userID, newPassword string) error
+	RequestEmailConfirmation(ctx context.Context, userID string) error
+	ValidateEmailToken(ctx context.Context, userID, token string) error
+}
+
+type service struct {
+	verificationRepo *dynamo.VerificationRepo
+	userRepo         *dynamo.UserRepo
+	sessionRepo      *dynamo.SessionRepo
+	deviceRepo       *dynamo.DeviceRepo
+	mailer           smtp.Mailer
+	smsSender        sns.SMSSender
+	jwtProvider      *jwtinfra.Provider
+}
+
+func NewService(
+	verificationRepo *dynamo.VerificationRepo,
+	userRepo *dynamo.UserRepo,
+	sessionRepo *dynamo.SessionRepo,
+	deviceRepo *dynamo.DeviceRepo,
+	mailer smtp.Mailer,
+	smsSender sns.SMSSender,
+	jwtProvider *jwtinfra.Provider,
+) Service {
+	return &service{
+		verificationRepo: verificationRepo,
+		userRepo:         userRepo,
+		sessionRepo:      sessionRepo,
+		deviceRepo:       deviceRepo,
+		mailer:           mailer,
+		smsSender:        smsSender,
+		jwtProvider:      jwtProvider,
+	}
+}
+
+func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error {
+	var u *domain.User
+	var err error
+	if req.Email != nil {
+		u, err = s.userRepo.GetByEmail(ctx, *req.Email)
+		if err != nil {
+			return errors.New("user not found")
+		}
+	} else if req.PhoneNumber != nil {
+		return errors.New("phone recovery not supported; provide email")
+	} else {
+		return errors.New("email or phone_number required")
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(999999))
+	if err != nil {
+		return err
+	}
+	otp := fmt.Sprintf("%06d", n.Int64())
+
+	v := &domain.UserVerification{
+		UserID:    u.UserID,
+		Type:      "otp",
+		Code:      otp,
+		ExpiresAt: time.Now().Add(15 * time.Minute).Unix(),
+	}
+	if err := s.verificationRepo.Put(ctx, v); err != nil {
+		return err
+	}
+
+	if req.Email != nil {
+		return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
+	}
+	return s.smsSender.SendSMS(*req.PhoneNumber, "Your OTP: "+otp)
+}
+
+func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, *domain.Session, error) {
+	if req.Email == nil {
+		return "", nil, errors.New("email required to validate OTP")
+	}
+	u, err := s.userRepo.GetByEmail(ctx, *req.Email)
+	if err != nil {
+		return "", nil, errors.New("user not found")
+	}
+	v, err := s.verificationRepo.Get(ctx, u.UserID, "otp")
+	if err != nil {
+		return "", nil, errors.New("OTP not found")
+	}
+	if v.Code != req.OTP {
+		return "", nil, errors.New("invalid OTP")
+	}
+	if v.ExpiresAt < time.Now().Unix() {
+		return "", nil, errors.New("OTP expired")
+	}
+	_ = s.verificationRepo.Delete(ctx, u.UserID, "otp")
+
+	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
+	if err != nil {
+		return "", nil, err
+	}
+	now := time.Now().UTC()
+	sess := &domain.Session{
+		SessionID: uuid.NewString(),
+		UserID:    u.UserID,
+		DeviceID:  device.DeviceID,
+		Enable:    true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.sessionRepo.Put(ctx, sess); err != nil {
+		return "", nil, err
+	}
+	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.RoleID, sess.SessionID)
+	if err != nil {
+		return "", nil, err
+	}
+	sess.User = u
+	return bearer, sess, nil
+}
+
+func (s *service) ChangePassword(ctx context.Context, userID, newPassword string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{"password_hash": string(hash)})
+}
+
+func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) error {
+	token, err := generateToken(32)
+	if err != nil {
+		return err
+	}
+	v := &domain.UserVerification{
+		UserID:    userID,
+		Type:      "email",
+		Code:      token,
+		ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+	}
+	if err := s.verificationRepo.Put(ctx, v); err != nil {
+		return err
+	}
+	u, err := s.userRepo.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return s.mailer.SendEmail(u.Email, "Confirm your email", "Token: "+token)
+}
+
+func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) error {
+	v, err := s.verificationRepo.Get(ctx, userID, "email")
+	if err != nil {
+		return errors.New("token not found")
+	}
+	if v.Code != token {
+		return errors.New("invalid token")
+	}
+	if v.ExpiresAt < time.Now().Unix() {
+		return errors.New("token expired")
+	}
+	_ = s.verificationRepo.Delete(ctx, userID, "email")
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{"email_confirmed": true})
+}
+
+func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID string) (*domain.Device, error) {
+	if deviceUUID != nil {
+		if d, err := s.deviceRepo.GetByUUID(ctx, *deviceUUID); err == nil {
+			return d, nil
+		}
+	}
+	devUUID := uuid.NewString()
+	if deviceUUID != nil {
+		devUUID = *deviceUUID
+	}
+	now := time.Now().UTC()
+	d := &domain.Device{
+		DeviceID:  uuid.NewString(),
+		UUID:      devUUID,
+		UserID:    userID,
+		Enable:    true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.deviceRepo.Put(ctx, d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func generateToken(n int) (string, error) {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = letters[idx.Int64()]
+	}
+	return string(b), nil
+}

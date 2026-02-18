@@ -1,0 +1,936 @@
+openapi: 3.0.3
+info:
+  title: WSGI Falcon API
+  version: 1.0.0
+  description: OpenAPI draft generated from Falcon controllers and middleware behavior.
+servers:
+  - url: http://127.0.0.1:3000
+tags:
+  - name: Health
+  - name: Sessions
+  - name: Users
+  - name: Password Recovery
+  - name: Email Confirmation
+  - name: Roles
+  - name: Statuses
+  - name: Devices
+  - name: Notifications
+  - name: Files S3
+paths:
+  /v1/health-check/{action}:
+    get:
+      tags: [Health]
+      summary: Health-check action
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/HealthAction'
+      responses:
+        '200':
+          description: Health action result
+    post:
+      tags: [Health]
+      summary: Health-check action (POST)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/HealthAction'
+      responses:
+        '200':
+          description: Health action result
+
+  /v1/sessions:
+    get:
+      tags: [Sessions]
+      summary: Get current session
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+
+  /v1/sessions/login:
+    post:
+      tags: [Sessions]
+      summary: Login with username/email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '401':
+          description: Invalid credentials
+
+  /v1/sessions/logout:
+    post:
+      tags: [Sessions]
+      summary: Logout current session
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Session ended
+
+  /v1/users:
+    get:
+      tags: [Users]
+      summary: List users (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsersEnvelope'
+        '403':
+          description: Forbidden
+    post:
+      tags: [Users]
+      summary: Register new user and auto-login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created and session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '409':
+          description: Username or email already exists
+
+  /v1/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by id (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataUserEnvelope'
+    put:
+      tags: [Users]
+      summary: Update user by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated user
+        '401':
+          description: Unauthorized update attempt
+    delete:
+      tags: [Users]
+      summary: Delete user by id (self or admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deleted user
+
+  /v1/password-recovery/{action}:
+    post:
+      tags: [Password Recovery]
+      summary: Password recovery flow action
+      description: action=request sends OTP; action=validate-code validates OTP and returns Bearer/session.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PasswordRecoveryAction'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/PasswordRecoveryRequest'
+                - $ref: '#/components/schemas/PasswordRecoveryValidateRequest'
+      responses:
+        '200':
+          description: Action result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MessageEnvelope'
+                  - $ref: '#/components/schemas/AuthEnvelope'
+
+  /v1/password-recovery/change-password:
+    post:
+      tags: [Password Recovery]
+      summary: Change password for authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+
+  /v1/confirm-email/{action}:
+    post:
+      tags: [Email Confirmation]
+      summary: Email confirmation flow action
+      description: action=request sends email token; action=validate-code validates { token } in body.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConfirmEmailAction'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmEmailValidateRequest'
+      responses:
+        '200':
+          description: Action result
+
+  /v1/roles:
+    get:
+      tags: [Roles]
+      summary: List roles (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Roles list
+    post:
+      tags: [Roles]
+      summary: Create role (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleInput'
+      responses:
+        '201':
+          description: Role created
+
+  /v1/roles/{id}:
+    get:
+      tags: [Roles]
+      summary: Get role by id (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Role detail
+    put:
+      tags: [Roles]
+      summary: Update role (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleInput'
+      responses:
+        '200':
+          description: Role updated
+    delete:
+      tags: [Roles]
+      summary: Delete role (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Role deleted
+
+  /v1/statuses:
+    get:
+      tags: [Statuses]
+      summary: List statuses
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Status list
+    post:
+      tags: [Statuses]
+      summary: Create status (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusInput'
+      responses:
+        '201':
+          description: Status created
+
+  /v1/statuses/{id}:
+    get:
+      tags: [Statuses]
+      summary: Get status by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Status detail
+    put:
+      tags: [Statuses]
+      summary: Update status (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusInput'
+      responses:
+        '200':
+          description: Status updated
+    delete:
+      tags: [Statuses]
+      summary: Delete status (admin only, hard delete)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Status deleted
+
+  /v1/devices:
+    get:
+      tags: [Devices]
+      summary: List devices
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Devices list
+
+  /v1/devices/{id}:
+    get:
+      tags: [Devices]
+      summary: Get device by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Device detail
+    put:
+      tags: [Devices]
+      summary: Update device by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Device updated
+    delete:
+      tags: [Devices]
+      summary: Delete device (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Device deleted
+
+  /v1/devices/version:
+    put:
+      tags: [Devices]
+      summary: Check device app version and update session device version
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_version]
+              properties:
+                device_version:
+                  type: number
+                  format: float
+      responses:
+        '200':
+          description: Up-to-date
+        '409':
+          description: Update required
+
+  /v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: List unread notifications for current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notifications list
+
+  /v1/notifications/{id}:
+    get:
+      tags: [Notifications]
+      summary: Get notification by id (still filtered to current user + unread)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Notification detail
+    put:
+      tags: [Notifications]
+      summary: Mark notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                read:
+                  type: integer
+                  default: 1
+      responses:
+        '200':
+          description: Notification updated
+
+  /v1/files/s3:
+    post:
+      tags: [Files S3]
+      summary: Upload S3 file (multipart/form-data)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: File uploaded
+
+  /v1/files/s3/{id}:
+    get:
+      tags: [Files S3]
+      summary: Download S3 file by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: File stream
+    delete:
+      tags: [Files S3]
+      summary: Delete S3 file by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: File deleted
+
+  /v1/files/s3/base64:
+    post:
+      tags: [Files S3]
+      summary: Upload S3 file from base64 payload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_name, base64]
+              properties:
+                file_name:
+                  type: string
+                base64:
+                  type: string
+      responses:
+        '201':
+          description: File uploaded
+    get:
+      tags: [Files S3]
+      summary: Not implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '405':
+          description: Method not allowed
+
+  /v1/files/s3/base64/{id}:
+    get:
+      tags: [Files S3]
+      summary: Get S3 file with base64 content by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Base64 file
+    post:
+      tags: [Files S3]
+      summary: Upload S3 file from base64 payload
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '405':
+          description: Method not allowed when id is provided
+
+  /v1/test:
+    get:
+      tags: [Health]
+      summary: Test endpoint placeholder
+      security: []
+      responses:
+        '200':
+          description: Placeholder
+    post:
+      tags: [Health]
+      summary: Test endpoint placeholder
+      security: []
+      responses:
+        '200':
+          description: Placeholder
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 50
+    HealthAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [ping]
+    PasswordRecoveryAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [request, validate-code]
+    ConfirmEmailAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [request, validate-code]
+
+  schemas:
+    MessageEnvelope:
+      type: object
+      properties:
+        message:
+          type: string
+        error:
+          type: string
+        error_code:
+          type: integer
+
+    SessionEnvelope:
+      type: object
+      properties:
+        session:
+          $ref: '#/components/schemas/Session'
+        message:
+          type: string
+        error:
+          type: string
+
+    AuthEnvelope:
+      type: object
+      properties:
+        Bearer:
+          type: string
+        session:
+          $ref: '#/components/schemas/Session'
+        message:
+          type: string
+        error:
+          type: string
+
+    PaginatedUsersEnvelope:
+      type: object
+      properties:
+        max_page:
+          type: integer
+        actual_page:
+          type: integer
+        per_page:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        error:
+          type: string
+
+    DataUserEnvelope:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        role_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date-time
+        verified:
+          type: boolean
+        email_confirmed:
+          type: boolean
+        phone_confirmed:
+          type: boolean
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        device_uuid:
+          type: string
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, email, first_name, last_name, birthday]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date-time
+        device_uuid:
+          type: string
+
+    UpdateUserRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date-time
+        role_id:
+          type: string
+        enable:
+          type: boolean
+
+    PasswordRecoveryRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        phone_number:
+          type: string
+
+    PasswordRecoveryValidateRequest:
+      type: object
+      required: [otp]
+      properties:
+        otp:
+          type: string
+        device_uuid:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required: [new_password]
+      properties:
+        new_password:
+          type: string
+
+    ConfirmEmailValidateRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    RoleInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        enable:
+          type: boolean
+
+    StatusInput:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        device_id:
+          type: string
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        role_id:
+          type: string
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date-time
+        verified:
+          type: boolean
+        email_confirmed:
+          type: boolean
+        phone_confirmed:
+          type: boolean
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+        uuid:
+          type: string
+        user_id:
+          type: string
+        token:
+          type: string
+          nullable: true
+        app_version_id:
+          type: string
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+
+    File:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        size:
+          type: integer
+        type:
+          type: string
+        name:
+          type: string
+        hash:
+          type: string
+        is_thumbnail:
+          type: integer
+        url:
+          type: string
+          nullable: true
+        is_private:
+          type: boolean
+        user_who_uploaded_id:
+          type: string
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        device_id:
+          type: string
+        template_id:
+          type: string
+        message:
+          type: string
+        readed:
+          type: integer
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
