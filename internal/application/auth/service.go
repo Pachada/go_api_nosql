@@ -107,10 +107,7 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return err
 	}
 
-	if req.Email != nil {
-		return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
-	}
-	return s.smsSender.SendSMS(ctx, *req.PhoneNumber, "Your OTP: "+otp)
+	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
 }
 
 func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, string, *domain.Session, error) {
