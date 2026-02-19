@@ -7,6 +7,12 @@ import (
 	"github.com/go-api-nosql/internal/domain"
 )
 
+// DynamoDB attribute names used in partial update maps.
+const (
+	fieldToken        = "token"
+	fieldAppVersionID = "app_version_id"
+)
+
 type Service interface {
 	List(ctx context.Context, userID string) ([]domain.Device, error)
 	Get(ctx context.Context, deviceID string) (*domain.Device, error)
@@ -47,10 +53,10 @@ func (s *service) Get(ctx context.Context, deviceID string) (*domain.Device, err
 func (s *service) Update(ctx context.Context, deviceID string, req domain.UpdateDeviceRequest) (*domain.Device, error) {
 	updates := map[string]interface{}{}
 	if req.Token != nil {
-		updates["token"] = *req.Token
+		updates[fieldToken] = *req.Token
 	}
 	if req.AppVersionID != nil {
-		updates["app_version_id"] = *req.AppVersionID
+		updates[fieldAppVersionID] = *req.AppVersionID
 	}
 	if len(updates) == 0 {
 		return s.repo.Get(ctx, deviceID)

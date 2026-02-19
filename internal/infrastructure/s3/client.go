@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -100,19 +99,5 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 		Key:    aws.String(key),
 	})
 	return err
-}
-
-func detectContentType(filename string) string {
-	lower := strings.ToLower(filename)
-	switch {
-	case strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg"):
-		return "image/jpeg"
-	case strings.HasSuffix(lower, ".png"):
-		return "image/png"
-	case strings.HasSuffix(lower, ".pdf"):
-		return "application/pdf"
-	default:
-		return "application/octet-stream"
-	}
 }
 

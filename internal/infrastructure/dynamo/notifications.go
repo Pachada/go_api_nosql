@@ -74,7 +74,7 @@ func (r *NotificationRepo) ListUnread(ctx context.Context, userID string) ([]dom
 }
 
 func (r *NotificationRepo) MarkAsRead(ctx context.Context, notificationID string) (*domain.Notification, error) {
-	ue, err := buildUpdateExpr(map[string]interface{}{"readed": 1})
+	ue, err := buildUpdateExpr(map[string]interface{}{fieldReaded: 1})
 	if err != nil {
 		return nil, err
 	}

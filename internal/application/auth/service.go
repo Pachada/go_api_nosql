@@ -18,6 +18,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// DynamoDB attribute names used in partial update maps.
+const (
+	fieldPasswordHash   = "password_hash"
+	fieldEmailConfirmed = "email_confirmed"
+	fieldPhoneConfirmed = "phone_confirmed"
+)
+
 type PasswordRecoveryRequest struct {
 	Email       *string `json:"email"`
 	PhoneNumber *string `json:"phone_number"`
@@ -211,7 +218,7 @@ func (s *service) ChangePassword(ctx context.Context, userID, newPassword string
 	if err != nil {
 		return err
 	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{"password_hash": string(hash)})
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)})
 }
 
 func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) error {
@@ -249,7 +256,7 @@ func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) 
 	if err := s.verificationRepo.Delete(ctx, userID, "email"); err != nil {
 		slog.Warn("failed to delete email verification record", "user_id", userID, "err", err)
 	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{"email_confirmed": true})
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldEmailConfirmed: true})
 }
 
 func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) error {
@@ -290,7 +297,7 @@ func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) erro
 	if err := s.verificationRepo.Delete(ctx, userID, "phone"); err != nil {
 		slog.Warn("failed to delete phone verification record", "user_id", userID, "err", err)
 	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{"phone_confirmed": true})
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldPhoneConfirmed: true})
 }
 
 // generateOTP returns a 6-character cryptographically random uppercase alphanumeric code,

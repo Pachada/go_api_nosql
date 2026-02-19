@@ -80,7 +80,7 @@ func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := realIP(r)
 		if !rl.get(ip).Allow() {
-			http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
+			writeJSONError(w, http.StatusTooManyRequests, "too many requests")
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -12,6 +12,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// DynamoDB attribute names used in partial update maps.
+const (
+	fieldUsername  = "username"
+	fieldEmail     = "email"
+	fieldPhone     = "phone"
+	fieldFirstName = "first_name"
+	fieldLastName  = "last_name"
+	fieldBirthday  = "birthday"
+	fieldRole      = "role"
+	fieldEnable    = "enable"
+)
+
 type Service interface {
 	Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error)
 	RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, string, error)
@@ -111,9 +123,6 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 }
 
 func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, string, error) {
-	if s.jwtProvider == nil {
-		return nil, "", "", errNotImplemented
-	}
 	u, err := s.Register(ctx, req)
 	if err != nil {
 		return nil, "", "", err
@@ -162,37 +171,37 @@ func (s *service) Get(ctx context.Context, userID string) (*domain.User, error) 
 func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUserRequest) (*domain.User, error) {
 	updates := map[string]interface{}{}
 	if req.Username != nil {
-		updates["username"] = *req.Username
+		updates[fieldUsername] = *req.Username
 	}
 	if req.Email != nil {
-		updates["email"] = *req.Email
+		updates[fieldEmail] = *req.Email
 	}
 	if req.Phone != nil {
-		updates["phone"] = *req.Phone
+		updates[fieldPhone] = *req.Phone
 	}
 	if req.FirstName != nil {
-		updates["first_name"] = *req.FirstName
+		updates[fieldFirstName] = *req.FirstName
 	}
 	if req.LastName != nil {
-		updates["last_name"] = *req.LastName
+		updates[fieldLastName] = *req.LastName
 	}
 	if req.Birthday != nil {
 		t, err := time.Parse("2006-01-02", *req.Birthday)
 		if err != nil {
 			return nil, fmt.Errorf("birthday must be in YYYY-MM-DD format: %w", domain.ErrBadRequest)
 		}
-		updates["birthday"] = t
+		updates[fieldBirthday] = t
 	}
 	if req.Role != nil {
 		switch *req.Role {
 		case domain.RoleAdmin, domain.RoleUser:
-			updates["role"] = *req.Role
+			updates[fieldRole] = *req.Role
 		default:
 			return nil, fmt.Errorf("invalid role: %w", domain.ErrBadRequest)
 		}
 	}
 	if req.Enable != nil {
-		updates["enable"] = *req.Enable
+		updates[fieldEnable] = *req.Enable
 	}
 	if len(updates) == 0 {
 		return s.repo.Get(ctx, userID)

@@ -52,7 +52,7 @@ func (r *FileRepo) Get(ctx context.Context, fileID string) (*domain.File, error)
 }
 
 func (r *FileRepo) SoftDelete(ctx context.Context, fileID string) error {
-	return r.update(ctx, fileID, map[string]interface{}{"enable": false})
+	return r.update(ctx, fileID, map[string]interface{}{fieldEnable: false})
 }
 
 func (r *FileRepo) update(ctx context.Context, fileID string, updates map[string]interface{}) error {

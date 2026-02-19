@@ -7,6 +7,9 @@ import (
 	"github.com/go-api-nosql/internal/pkg/id"
 )
 
+// DynamoDB attribute name used in partial update maps.
+const fieldDescription = "description"
+
 type Service interface {
 	List(ctx context.Context) ([]domain.Status, error)
 	Get(ctx context.Context, statusID string) (*domain.Status, error)
@@ -51,7 +54,7 @@ func (s *service) Create(ctx context.Context, input domain.StatusInput) (*domain
 }
 
 func (s *service) Update(ctx context.Context, statusID string, input domain.StatusInput) (*domain.Status, error) {
-	if err := s.repo.Update(ctx, statusID, map[string]interface{}{"description": input.Description}); err != nil {
+	if err := s.repo.Update(ctx, statusID, map[string]interface{}{fieldDescription: input.Description}); err != nil {
 		return nil, err
 	}
 	return s.repo.Get(ctx, statusID)

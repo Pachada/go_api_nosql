@@ -41,8 +41,8 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Filename:    header.Filename,
 		ContentType: header.Header.Get("Content-Type"),
 		Size:        header.Size,
-		IsPrivate:   r.URL.Query().Get("private") == "True",
-		IsThumbnail: r.URL.Query().Get("thumbnail") == "True",
+		IsPrivate:   strings.EqualFold(r.URL.Query().Get("private"), "true"),
+		IsThumbnail: strings.EqualFold(r.URL.Query().Get("thumbnail"), "true"),
 		UploaderID:  claims.UserID,
 	})
 	if err != nil {

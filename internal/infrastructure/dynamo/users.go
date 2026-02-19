@@ -82,8 +82,8 @@ func (r *UserRepo) Update(ctx context.Context, userID string, updates map[string
 
 func (r *UserRepo) SoftDelete(ctx context.Context, userID string) error {
 	return r.Update(ctx, userID, map[string]interface{}{
-		"enable":     false,
-		"deleted_at": time.Now().UTC().Format(time.RFC3339),
+		fieldEnable:    false,
+		fieldDeletedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

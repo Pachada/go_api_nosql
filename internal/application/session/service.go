@@ -13,6 +13,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// DynamoDB attribute name used in partial update maps.
+const fieldEnable = "enable"
+
 
 
 type LoginRequest struct {
@@ -128,7 +131,7 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 }
 
 func (s *service) Logout(ctx context.Context, sessionID string) error {
-	return s.sessionRepo.Update(ctx, sessionID, map[string]interface{}{"enable": false})
+	return s.sessionRepo.Update(ctx, sessionID, map[string]interface{}{fieldEnable: false})
 }
 
 func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Session, error) {
@@ -182,4 +185,3 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	}
 	return bearer, newToken, nil
 }
-

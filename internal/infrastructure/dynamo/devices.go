@@ -116,5 +116,5 @@ func (r *DeviceRepo) Update(ctx context.Context, deviceID string, updates map[st
 }
 
 func (r *DeviceRepo) SoftDelete(ctx context.Context, deviceID string) error {
-	return r.Update(ctx, deviceID, map[string]interface{}{"enable": false})
+	return r.Update(ctx, deviceID, map[string]interface{}{fieldEnable: false})
 }
