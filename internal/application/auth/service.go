@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
 	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
@@ -58,25 +56,50 @@ type Service interface {
 	PhoneConfirmationService
 }
 
+type verificationStore interface {
+	Put(ctx context.Context, v *domain.UserVerification) error
+	Get(ctx context.Context, userID, verType string) (*domain.UserVerification, error)
+	Delete(ctx context.Context, userID, verType string) error
+}
+
+type userStore interface {
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	Get(ctx context.Context, userID string) (*domain.User, error)
+	Update(ctx context.Context, userID string, updates map[string]interface{}) error
+}
+
+type sessionStore interface {
+	Put(ctx context.Context, s *domain.Session) error
+}
+
+type deviceStore interface {
+	GetByUUID(ctx context.Context, uuid string) (*domain.Device, error)
+	Put(ctx context.Context, d *domain.Device) error
+}
+
+type jwtSigner interface {
+	Sign(userID, deviceID, role, sessionID string) (string, error)
+}
+
 type service struct {
-	verificationRepo *dynamo.VerificationRepo
-	userRepo         *dynamo.UserRepo
-	sessionRepo      *dynamo.SessionRepo
-	deviceRepo       *dynamo.DeviceRepo
+	verificationRepo verificationStore
+	userRepo         userStore
+	sessionRepo      sessionStore
+	deviceRepo       deviceStore
 	mailer           smtp.Mailer
 	smsSender        sns.SMSSender
-	jwtProvider      *jwtinfra.Provider
+	jwtProvider      jwtSigner
 	refreshTokenDur  time.Duration
 }
 
 type ServiceDeps struct {
-	VerificationRepo *dynamo.VerificationRepo
-	UserRepo         *dynamo.UserRepo
-	SessionRepo      *dynamo.SessionRepo
-	DeviceRepo       *dynamo.DeviceRepo
+	VerificationRepo verificationStore
+	UserRepo         userStore
+	SessionRepo      sessionStore
+	DeviceRepo       deviceStore
 	Mailer           smtp.Mailer
 	SMSSender        sns.SMSSender
-	JWTProvider      *jwtinfra.Provider
+	JWTProvider      jwtSigner
 	RefreshTokenDur  time.Duration
 }
 

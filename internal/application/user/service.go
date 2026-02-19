@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
 	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
@@ -23,19 +21,43 @@ type Service interface {
 	Delete(ctx context.Context, userID string) error
 }
 
+type userStore interface {
+	GetByUsername(ctx context.Context, username string) (*domain.User, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	Put(ctx context.Context, u *domain.User) error
+	ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
+	Get(ctx context.Context, userID string) (*domain.User, error)
+	Update(ctx context.Context, userID string, updates map[string]interface{}) error
+	SoftDelete(ctx context.Context, userID string) error
+}
+
+type sessionStore interface {
+	Put(ctx context.Context, s *domain.Session) error
+	SoftDeleteByUser(ctx context.Context, userID string) error
+}
+
+type deviceStore interface {
+	GetByUUID(ctx context.Context, uuid string) (*domain.Device, error)
+	Put(ctx context.Context, d *domain.Device) error
+}
+
+type jwtSigner interface {
+	Sign(userID, deviceID, role, sessionID string) (string, error)
+}
+
 type service struct {
-	repo            *dynamo.UserRepo
-	sessionRepo     *dynamo.SessionRepo
-	deviceRepo      *dynamo.DeviceRepo
-	jwtProvider     *jwtinfra.Provider
+	repo            userStore
+	sessionRepo     sessionStore
+	deviceRepo      deviceStore
+	jwtProvider     jwtSigner
 	refreshTokenDur time.Duration
 }
 
 type ServiceDeps struct {
-	UserRepo        *dynamo.UserRepo
-	SessionRepo     *dynamo.SessionRepo
-	DeviceRepo      *dynamo.DeviceRepo
-	JWTProvider     *jwtinfra.Provider
+	UserRepo        userStore
+	SessionRepo     sessionStore
+	DeviceRepo      deviceStore
+	JWTProvider     jwtSigner
 	RefreshTokenDur time.Duration
 }
 

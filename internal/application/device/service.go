@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 )
 
 type Service interface {
@@ -17,12 +16,23 @@ type Service interface {
 	CheckVersion(ctx context.Context, sessionID string, version float64) (bool, error)
 }
 
-type service struct {
-	repo           *dynamo.DeviceRepo
-	appVersionRepo *dynamo.AppVersionRepo
+type deviceStore interface {
+	ListByUser(ctx context.Context, userID string) ([]domain.Device, error)
+	Get(ctx context.Context, deviceID string) (*domain.Device, error)
+	Update(ctx context.Context, deviceID string, updates map[string]interface{}) error
+	SoftDelete(ctx context.Context, deviceID string) error
 }
 
-func NewService(repo *dynamo.DeviceRepo, appVersionRepo *dynamo.AppVersionRepo) Service {
+type appVersionStore interface {
+	GetLatest(ctx context.Context) (*domain.AppVersion, error)
+}
+
+type service struct {
+	repo           deviceStore
+	appVersionRepo appVersionStore
+}
+
+func NewService(repo deviceStore, appVersionRepo appVersionStore) Service {
 	return &service{repo: repo, appVersionRepo: appVersionRepo}
 }
 

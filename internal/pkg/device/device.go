@@ -6,13 +6,17 @@ import (
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	"github.com/go-api-nosql/internal/pkg/id"
 )
 
+type deviceStorer interface {
+	GetByUUID(ctx context.Context, uuid string) (*domain.Device, error)
+	Put(ctx context.Context, d *domain.Device) error
+}
+
 // Resolve returns the existing Device for deviceUUID when found, otherwise
 // creates a new one associated with userID and persists it.
-func Resolve(ctx context.Context, repo *dynamo.DeviceRepo, deviceUUID *string, userID string) (*domain.Device, error) {
+func Resolve(ctx context.Context, repo deviceStorer, deviceUUID *string, userID string) (*domain.Device, error) {
 	if deviceUUID != nil {
 		d, err := repo.GetByUUID(ctx, *deviceUUID)
 		if err == nil {
