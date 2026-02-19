@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/user"
 	"github.com/go-api-nosql/internal/domain"
+	"github.com/go-api-nosql/internal/pkg/validate"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
@@ -24,37 +25,57 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	u, err := h.svc.Register(r.Context(), req)
-	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, AuthEnvelope{Message: "user created", Session: &domain.Session{User: u}})
+	sess, bearer, refreshToken, err := h.svc.RegisterWithSession(r.Context(), req)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, AuthEnvelope{
+		AccessToken:  bearer,
+		RefreshToken: refreshToken,
+		Session:      toSafeSession(sess),
+		User:         toSafeUser(sess.User),
+	})
 }
 
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
-	page, perPage := parsePagination(r)
-	users, total, err := h.svc.List(r.Context(), page, perPage)
+	limit, cursor := parseCursorPagination(r)
+	users, nextCursor, err := h.svc.List(r.Context(), limit, cursor)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
-	maxPage := 1
-	if perPage > 0 && total > 0 {
-		maxPage = (total + perPage - 1) / perPage
+	safe := make([]*SafeUser, len(users))
+	for i := range users {
+		safe[i] = toSafeUser(&users[i])
 	}
-	writeJSON(w, http.StatusOK, PaginatedUsersEnvelope{
-		MaxPage: maxPage, ActualPage: page, PerPage: perPage, Data: users,
+	writeJSON(w, http.StatusOK, CursorUsersEnvelope{
+		Data:       safe,
+		Returned:   len(safe),
+		NextCursor: nextCursor,
 	})
 }
 
 func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
-	u, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	writeJSON(w, http.StatusOK, u)
+	u, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	if claims.UserID == u.UserID || claims.Role == domain.RoleAdmin {
+		writeJSON(w, http.StatusOK, toSafeUser(u))
+		return
+	}
+	writeJSON(w, http.StatusOK, toPublicUser(u))
 }
 
 func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +85,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetID := chi.URLParam(r, "id")
-	if claims.UserID != targetID && claims.RoleID == "" {
+	if claims.UserID != targetID && claims.Role != domain.RoleAdmin {
 		writeError(w, http.StatusUnauthorized, "cannot update another user")
 		return
 	}
@@ -73,31 +94,38 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	u, err := h.svc.Update(r.Context(), targetID, req)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, u)
+	if claims.Role != domain.RoleAdmin {
+		if req.Role != nil || req.Enable != nil {
+			writeError(w, http.StatusForbidden, "cannot set role or enable as non-admin")
+			return
+		}
+	}
+	u, err := h.svc.Update(r.Context(), targetID, req)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toSafeUser(u))
 }
 
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "user deleted"})
+	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "deleted"})
 }
 
-func parsePagination(r *http.Request) (page, perPage int) {
-	page, _ = strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
+func parseCursorPagination(r *http.Request) (limit int, cursor string) {
+	limit, _ = strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit < 1 {
+		limit = 50
 	}
-	perPage, _ = strconv.Atoi(r.URL.Query().Get("per_page"))
-	if perPage < 1 {
-		perPage = 50
-	}
+	cursor = r.URL.Query().Get("cursor")
 	return
 }
 

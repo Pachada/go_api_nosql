@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds all runtime configuration loaded from environment variables.
@@ -18,19 +19,20 @@ type Config struct {
 	JWTPrivateKeyPath string
 	JWTPublicKeyPath  string
 	JWTExpiryDays    int
+	RefreshTokenExpiryDays int
 	SMTPHost     string
 	SMTPPort     string
 	SMTPFrom     string
 	SMTPUsername string
 	SMTPPassword string
-	SNSRegion string
+	SNSRegion      string
+	AllowedOrigins []string // CORS allowed origins
 }
 
 // DynamoTables holds the DynamoDB table name for each entity.
 type DynamoTables struct {
 	Users             string
 	Sessions          string
-	Roles             string
 	Statuses          string
 	Devices           string
 	Notifications     string
@@ -51,7 +53,6 @@ func Load() *Config {
 		DynamoTables: DynamoTables{
 			Users:             getEnv("DYNAMO_TABLE_USERS", "users"),
 			Sessions:          getEnv("DYNAMO_TABLE_SESSIONS", "sessions"),
-			Roles:             getEnv("DYNAMO_TABLE_ROLES", "roles"),
 			Statuses:          getEnv("DYNAMO_TABLE_STATUSES", "statuses"),
 			Devices:           getEnv("DYNAMO_TABLE_DEVICES", "devices"),
 			Notifications:     getEnv("DYNAMO_TABLE_NOTIFICATIONS", "notifications"),
@@ -62,13 +63,24 @@ func Load() *Config {
 		S3BucketName:      getEnv("S3_BUCKET_NAME", "go-api-files"),
 		JWTPrivateKeyPath: getEnv("JWT_PRIVATE_KEY_PATH", "./private_key.pem"),
 		JWTPublicKeyPath:  getEnv("JWT_PUBLIC_KEY_PATH", "./public_key.pem"),
-		JWTExpiryDays:     getEnvInt("JWT_EXPIRY_DAYS", 7),
+		JWTExpiryDays:          getEnvInt("JWT_EXPIRY_DAYS", 7),
+		RefreshTokenExpiryDays: getEnvInt("REFRESH_TOKEN_EXPIRY_DAYS", 30),
 		SMTPHost:     getEnv("SMTP_HOST", "localhost"),
 		SMTPPort:     getEnv("SMTP_PORT", "1025"),
 		SMTPFrom:     getEnv("SMTP_FROM", "noreply@example.com"),
 		SMTPUsername: getEnv("SMTP_USERNAME", ""),
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
 		SNSRegion: getEnv("SNS_REGION", "us-east-1"),
+		AllowedOrigins: func() []string {
+			parts := strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ",")
+			result := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if t := strings.TrimSpace(p); t != "" {
+					result = append(result, t)
+				}
+			}
+			return result
+		}(),
 	}
 }
 

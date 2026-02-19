@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	fileapp "github.com/go-api-nosql/internal/application/file"
+	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
@@ -44,7 +46,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		UploaderID:  claims.UserID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, uploaded)
@@ -66,7 +68,7 @@ func (h *FileHandler) UploadBase64(w http.ResponseWriter, r *http.Request) {
 	}
 	uploaded, err := h.svc.UploadBase64(r.Context(), body.FileName, body.Base64, claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, uploaded)
@@ -78,13 +80,14 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	rc, _, err := h.svc.Download(r.Context(), chi.URLParam(r, "id"), claims.UserID, false)
+	rc, f, err := h.svc.Download(r.Context(), chi.URLParam(r, "id"), claims.UserID, claims.Role == domain.RoleAdmin)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	defer rc.Close()
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeHeaderFilename(f.Name)+"\"")
 	_, _ = io.Copy(w, rc)
 }
 
@@ -94,15 +97,11 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id"), claims.UserID, false); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id"), claims.UserID, claims.Role == domain.RoleAdmin); err != nil {
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "file deleted"})
-}
-
-func (h *FileHandler) ListBase64(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "not implemented"})
 }
 
 func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
@@ -111,9 +110,9 @@ func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	f, b64, err := h.svc.GetBase64(r.Context(), chi.URLParam(r, "id"), claims.UserID, false)
+	f, b64, err := h.svc.GetBase64(r.Context(), chi.URLParam(r, "id"), claims.UserID, claims.Role == domain.RoleAdmin)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"file": f, "base64": b64})
@@ -121,5 +120,13 @@ func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
 
 func (h *FileHandler) MethodNotAllowed(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusMethodNotAllowed, "method not allowed when id is provided")
+}
+
+// sanitizeHeaderFilename strips CR/LF characters and escapes double-quotes to
+// prevent HTTP header injection via the Content-Disposition filename parameter.
+func sanitizeHeaderFilename(name string) string {
+	name = strings.ReplaceAll(name, "\r", "")
+	name = strings.ReplaceAll(name, "\n", "")
+	return strings.ReplaceAll(name, "\"", "\\\"")
 }
 

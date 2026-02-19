@@ -2,7 +2,7 @@ package dynamo
 
 import (
 	"context"
-	"errors"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -44,11 +44,14 @@ func (r *UserRepo) Get(ctx context.Context, userID string) (*domain.User, error)
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("user not found")
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	var u domain.User
 	if err := attributevalue.UnmarshalMap(out.Item, &u); err != nil {
 		return nil, err
+	}
+	if u.DeletedAt != nil {
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	return &u, nil
 }
@@ -78,26 +81,61 @@ func (r *UserRepo) Update(ctx context.Context, userID string, updates map[string
 }
 
 func (r *UserRepo) SoftDelete(ctx context.Context, userID string) error {
-	return r.Update(ctx, userID, map[string]interface{}{"enable": false})
+	return r.Update(ctx, userID, map[string]interface{}{
+		"enable":     false,
+		"deleted_at": time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
-// Scan returns all enabled users (full scan — suitable for small user tables or admin use).
-func (r *UserRepo) Scan(ctx context.Context) ([]domain.User, error) {
-	out, err := r.client.Scan(ctx, &dynamodb.ScanInput{
+// ScanPage returns a page of enabled users.
+// cursor is a base64-encoded user_id used as ExclusiveStartKey.
+// Returns the items, a next cursor (empty string when no more pages), and any error.
+func (r *UserRepo) ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error) {
+	input := &dynamodb.ScanInput{
 		TableName:        aws.String(r.tableName),
-		FilterExpression: aws.String("enable = :t"),
+		FilterExpression: aws.String("#en = :t"),
+		ExpressionAttributeNames: map[string]string{
+			"#en": "enable",
+		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":t": &types.AttributeValueMemberBOOL{Value: true},
 		},
-	})
+		Limit: aws.Int32(limit),
+	}
+	if cursor != "" {
+		userID, err := decodeCursor(cursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid cursor: %w", domain.ErrBadRequest)
+		}
+		input.ExclusiveStartKey = map[string]types.AttributeValue{
+			"user_id": &types.AttributeValueMemberS{Value: userID},
+		}
+	}
+	out, err := r.client.Scan(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var users []domain.User
 	if err := attributevalue.UnmarshalListOfMaps(out.Items, &users); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return users, nil
+	nextCursor := ""
+	if v, ok := out.LastEvaluatedKey["user_id"].(*types.AttributeValueMemberS); ok {
+		nextCursor = encodeCursor(v.Value)
+	}
+	return users, nextCursor, nil
+}
+
+func encodeCursor(userID string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(userID))
+}
+
+func decodeCursor(cursor string) (string, error) {
+	b, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return "", domain.ErrBadRequest
+	}
+	return string(b), nil
 }
 
 func (r *UserRepo) queryGSI(ctx context.Context, index, attr, value string) (*domain.User, error) {
@@ -113,7 +151,7 @@ func (r *UserRepo) queryGSI(ctx context.Context, index, attr, value string) (*do
 		return nil, err
 	}
 	if len(out.Items) == 0 {
-		return nil, errors.New("user not found")
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	var u domain.User
 	if err := attributevalue.UnmarshalMap(out.Items[0], &u); err != nil {

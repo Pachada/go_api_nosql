@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-api-nosql/internal/application/session"
+	"github.com/go-api-nosql/internal/pkg/validate"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
@@ -23,12 +24,37 @@ func (h *SessionHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	result, err := h.svc.Login(r.Context(), req)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, err.Error())
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, AuthEnvelope{Bearer: result.Bearer, Session: result.Session})
+	result, err := h.svc.Login(r.Context(), req)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, AuthEnvelope{
+		AccessToken:  result.Bearer,
+		RefreshToken: result.RefreshToken,
+		Session:      toSafeSession(result.Session),
+		User:         toSafeUser(result.Session.User),
+	})
+}
+
+func (h *SessionHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+		writeError(w, http.StatusBadRequest, "refresh_token required")
+		return
+	}
+	bearer, newToken, err := h.svc.Refresh(r.Context(), req.RefreshToken)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, AuthEnvelope{AccessToken: bearer, RefreshToken: newToken})
 }
 
 func (h *SessionHandler) GetCurrent(w http.ResponseWriter, r *http.Request) {
@@ -39,10 +65,10 @@ func (h *SessionHandler) GetCurrent(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, err := h.svc.GetCurrent(r.Context(), claims.SessionID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, SessionEnvelope{Session: sess})
+	writeJSON(w, http.StatusOK, SessionEnvelope{Session: toSafeSession(sess), User: toSafeUser(sess.User)})
 }
 
 func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +78,7 @@ func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Logout(r.Context(), claims.SessionID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "logged out"})

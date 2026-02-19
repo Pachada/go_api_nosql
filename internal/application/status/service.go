@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	"github.com/google/uuid"
+	"github.com/go-api-nosql/internal/pkg/id"
 )
 
 type Service interface {
@@ -34,7 +34,7 @@ func (s *service) Get(ctx context.Context, statusID string) (*domain.Status, err
 
 func (s *service) Create(ctx context.Context, input domain.StatusInput) (*domain.Status, error) {
 	st := &domain.Status{
-		StatusID:    uuid.NewString(),
+		StatusID:    id.New(),
 		Description: input.Description,
 	}
 	if err := s.repo.Put(ctx, st); err != nil {

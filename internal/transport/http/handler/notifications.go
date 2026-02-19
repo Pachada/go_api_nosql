@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -26,36 +25,23 @@ func (h *NotificationHandler) ListUnread(w http.ResponseWriter, r *http.Request)
 	}
 	notifications, err := h.svc.ListUnread(r.Context(), claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, notifications)
 }
 
-func (h *NotificationHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	n, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"), claims.UserID)
+	n, err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id"), claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, n)
-}
-
-func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Read int `json:"read"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	if err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "notification updated"})
 }
 

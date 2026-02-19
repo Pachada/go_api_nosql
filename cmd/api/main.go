@@ -57,7 +57,6 @@ func main() {
 	deps := &transporthttp.Deps{
 		UserRepo:         dynamo.NewUserRepo(dynamoClient, cfg.DynamoTables.Users),
 		SessionRepo:      dynamo.NewSessionRepo(dynamoClient, cfg.DynamoTables.Sessions),
-		RoleRepo:         dynamo.NewRoleRepo(dynamoClient, cfg.DynamoTables.Roles),
 		StatusRepo:       dynamo.NewStatusRepo(dynamoClient, cfg.DynamoTables.Statuses),
 		DeviceRepo:       dynamo.NewDeviceRepo(dynamoClient, cfg.DynamoTables.Devices),
 		NotificationRepo: dynamo.NewNotificationRepo(dynamoClient, cfg.DynamoTables.Notifications),
@@ -70,7 +69,8 @@ func main() {
 		JWTProvider:      jwtProvider,
 	}
 
-	router := transporthttp.NewRouter(cfg, deps)
+	routerCtx, routerCancel := context.WithCancel(context.Background())
+	router := transporthttp.NewRouter(routerCtx, cfg, deps)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.AppPort),
@@ -97,5 +97,6 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("forced shutdown: %v", err)
 	}
+	routerCancel()
 	log.Println("Server stopped")
 }

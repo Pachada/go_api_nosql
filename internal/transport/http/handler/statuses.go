@@ -19,7 +19,7 @@ func NewStatusHandler(svc status.Service) *StatusHandler { return &StatusHandler
 func (h *StatusHandler) List(w http.ResponseWriter, r *http.Request) {
 	statuses, err := h.svc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, statuses)
@@ -33,7 +33,7 @@ func (h *StatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := h.svc.Create(r.Context(), input)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, created)
@@ -42,7 +42,7 @@ func (h *StatusHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *StatusHandler) Get(w http.ResponseWriter, r *http.Request) {
 	st, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -56,7 +56,7 @@ func (h *StatusHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, err := h.svc.Update(r.Context(), chi.URLParam(r, "id"), input)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
@@ -65,7 +65,7 @@ func (h *StatusHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete is a hard delete (no soft delete for statuses).
 func (h *StatusHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "status deleted"})

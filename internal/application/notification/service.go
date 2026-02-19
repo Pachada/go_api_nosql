@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
@@ -9,8 +10,7 @@ import (
 
 type Service interface {
 	ListUnread(ctx context.Context, userID string) ([]domain.Notification, error)
-	Get(ctx context.Context, notificationID, userID string) (*domain.Notification, error)
-	MarkAsRead(ctx context.Context, notificationID string) error
+	MarkAsRead(ctx context.Context, notificationID, userID string) (*domain.Notification, error)
 }
 
 type service struct {
@@ -25,10 +25,13 @@ func (s *service) ListUnread(ctx context.Context, userID string) ([]domain.Notif
 	return s.repo.ListUnread(ctx, userID)
 }
 
-func (s *service) Get(ctx context.Context, notificationID, _ string) (*domain.Notification, error) {
-	return s.repo.Get(ctx, notificationID)
-}
-
-func (s *service) MarkAsRead(ctx context.Context, notificationID string) error {
+func (s *service) MarkAsRead(ctx context.Context, notificationID, userID string) (*domain.Notification, error) {
+	n, err := s.repo.Get(ctx, notificationID)
+	if err != nil {
+		return nil, err
+	}
+	if n.UserID != userID {
+		return nil, fmt.Errorf("forbidden: %w", domain.ErrForbidden)
+	}
 	return s.repo.MarkAsRead(ctx, notificationID)
 }

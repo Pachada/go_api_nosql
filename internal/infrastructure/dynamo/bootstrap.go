@@ -37,23 +37,14 @@ func Bootstrap(ctx context.Context, client *dynamodb.Client, tables config.Dynam
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("session_id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("user_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("refresh_token"), AttributeType: types.ScalarAttributeTypeS},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{AttributeName: aws.String("session_id"), KeyType: types.KeyTypeHash},
 		},
 		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 			gsi("user_id-index", "user_id", ""),
-		},
-	})
-
-	createTable(ctx, client, &dynamodb.CreateTableInput{
-		TableName:   aws.String(tables.Roles),
-		BillingMode: types.BillingModePayPerRequest,
-		AttributeDefinitions: []types.AttributeDefinition{
-			{AttributeName: aws.String("role_id"), AttributeType: types.ScalarAttributeTypeS},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{AttributeName: aws.String("role_id"), KeyType: types.KeyTypeHash},
+			gsi("refresh_token-index", "refresh_token", ""),
 		},
 	})
 

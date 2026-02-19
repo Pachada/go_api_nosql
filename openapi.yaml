@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: WSGI Falcon API
+  title: Go API NoSQL
   version: 1.0.0
-  description: OpenAPI draft generated from Falcon controllers and middleware behavior.
+  description: REST API backed by DynamoDB and S3 on LocalStack. Uses RS256 JWT authentication with refresh token rotation.
 servers:
   - url: http://127.0.0.1:3000
 tags:
@@ -16,6 +16,7 @@ tags:
   - name: Devices
   - name: Notifications
   - name: Files S3
+  - name: Phone Confirmation
 paths:
   /v1/health-check/{action}:
     get:
@@ -40,7 +41,7 @@ paths:
   /v1/sessions:
     get:
       tags: [Sessions]
-      summary: Get current session
+      summary: Get current session and user
       security:
         - bearerAuth: []
       responses:
@@ -50,6 +51,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /v1/sessions/login:
     post:
@@ -70,7 +73,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthEnvelope'
         '401':
-          description: Invalid credentials
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/sessions/refresh:
+    post:
+      tags: [Sessions]
+      summary: Refresh access token using a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New access and refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /v1/sessions/logout:
     post:
@@ -86,20 +116,34 @@ paths:
     get:
       tags: [Users]
       summary: List users (admin only)
+      description: |
+        Cursor-based pagination. Pass `next_cursor` from a previous response as `cursor` to get the next page.
+        Note: `returned` may be less than `limit` when filtered items are skipped by DynamoDB.
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/PerPage'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque pagination cursor from a previous response's `next_cursor`
+          schema:
+            type: string
       responses:
         '200':
           description: Paginated users
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedUsersEnvelope'
+                $ref: '#/components/schemas/CursorUsersEnvelope'
         '403':
-          description: Forbidden
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Users]
       summary: Register new user and auto-login
@@ -119,6 +163,8 @@ paths:
                 $ref: '#/components/schemas/AuthEnvelope'
         '409':
           description: Username or email already exists
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /v1/users/{id}:
     get:
@@ -134,10 +180,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DataUserEnvelope'
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
       tags: [Users]
-      summary: Update user by id
+      summary: Update user by id (self or admin)
       security:
         - bearerAuth: []
       parameters:
@@ -151,24 +199,38 @@ paths:
       responses:
         '200':
           description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
         '401':
-          description: Unauthorized update attempt
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [Users]
-      summary: Delete user by id (self or admin)
+      summary: Delete user by id (soft delete, admin only)
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
         '200':
-          description: Deleted user
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageEnvelope'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /v1/password-recovery/{action}:
     post:
       tags: [Password Recovery]
       summary: Password recovery flow action
-      description: action=request sends OTP; action=validate-code validates OTP and returns Bearer/session.
+      description: |
+        - **action=request**: Send OTP to email. Body: `{ "email": "..." }`
+        - **action=validate-code**: Validate OTP, returns access/refresh tokens. Body: `{ "otp": "...", "email": "...", "device_uuid": "..." }`
       security: []
       parameters:
         - $ref: '#/components/parameters/PasswordRecoveryAction'
@@ -189,6 +251,10 @@ paths:
                 oneOf:
                   - $ref: '#/components/schemas/MessageEnvelope'
                   - $ref: '#/components/schemas/AuthEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /v1/password-recovery/change-password:
     post:
@@ -205,12 +271,16 @@ paths:
       responses:
         '200':
           description: Password changed
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /v1/confirm-email/{action}:
     post:
       tags: [Email Confirmation]
       summary: Email confirmation flow action
-      description: action=request sends email token; action=validate-code validates { token } in body.
+      description: |
+        - **action=request**: Send confirmation email
+        - **action=validate-code**: Validate token from email. Body: `{ "token": "..." }`
       security:
         - bearerAuth: []
       parameters:
@@ -224,78 +294,68 @@ paths:
       responses:
         '200':
           description: Action result
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/confirm-phone/{action}:
+    post:
+      tags: [Phone Confirmation]
+      summary: Phone confirmation flow action
+      description: |
+        - **action=request**: Send confirmation OTP via SMS
+        - **action=validate-code**: Validate OTP. Body: `{ "otp": "..." }`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConfirmPhoneAction'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                otp:
+                  type: string
+      responses:
+        '200':
+          description: Action result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /v1/roles:
     get:
       tags: [Roles]
-      summary: List roles (admin only)
-      security:
-        - bearerAuth: []
+      summary: List available roles
+      security: []
       responses:
         '200':
-          description: Roles list
-    post:
-      tags: [Roles]
-      summary: Create role (admin only)
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RoleInput'
-      responses:
-        '201':
-          description: Role created
-
-  /v1/roles/{id}:
-    get:
-      tags: [Roles]
-      summary: Get role by id (admin only)
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '200':
-          description: Role detail
-    put:
-      tags: [Roles]
-      summary: Update role (admin only)
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RoleInput'
-      responses:
-        '200':
-          description: Role updated
-    delete:
-      tags: [Roles]
-      summary: Delete role (admin only)
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '200':
-          description: Role deleted
+          description: Role names list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["Admin", "User"]
 
   /v1/statuses:
     get:
       tags: [Statuses]
-      summary: List statuses
+      summary: List all statuses
       security:
         - bearerAuth: []
       responses:
         '200':
           description: Status list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Status'
     post:
       tags: [Statuses]
       summary: Create status (admin only)
@@ -310,6 +370,12 @@ paths:
       responses:
         '201':
           description: Status created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /v1/statuses/{id}:
     get:
@@ -322,6 +388,12 @@ paths:
       responses:
         '200':
           description: Status detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
       tags: [Statuses]
       summary: Update status (admin only)
@@ -338,6 +410,12 @@ paths:
       responses:
         '200':
           description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [Statuses]
       summary: Delete status (admin only, hard delete)
@@ -348,16 +426,24 @@ paths:
       responses:
         '200':
           description: Status deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /v1/devices:
     get:
       tags: [Devices]
-      summary: List devices
+      summary: List devices for current user
       security:
         - bearerAuth: []
       responses:
         '200':
           description: Devices list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
 
   /v1/devices/{id}:
     get:
@@ -370,6 +456,14 @@ paths:
       responses:
         '200':
           description: Device detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
       tags: [Devices]
       summary: Update device by id
@@ -382,14 +476,19 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/UpdateDeviceRequest'
       responses:
         '200':
           description: Device updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [Devices]
-      summary: Delete device (admin only)
+      summary: Delete device
       security:
         - bearerAuth: []
       parameters:
@@ -397,11 +496,13 @@ paths:
       responses:
         '200':
           description: Device deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /v1/devices/version:
     put:
       tags: [Devices]
-      summary: Check device app version and update session device version
+      summary: Check device app version
       security:
         - bearerAuth: []
       requestBody:
@@ -430,18 +531,14 @@ paths:
       responses:
         '200':
           description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
 
   /v1/notifications/{id}:
-    get:
-      tags: [Notifications]
-      summary: Get notification by id (still filtered to current user + unread)
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '200':
-          description: Notification detail
     put:
       tags: [Notifications]
       summary: Mark notification as read
@@ -449,19 +546,13 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/Id'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                read:
-                  type: integer
-                  default: 1
       responses:
         '200':
-          description: Notification updated
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
 
   /v1/files/s3:
     post:
@@ -469,16 +560,35 @@ paths:
       summary: Upload S3 file (multipart/form-data)
       security:
         - bearerAuth: []
+      parameters:
+        - name: private
+          in: query
+          schema:
+            type: string
+            enum: ["True", "False"]
+        - name: thumbnail
+          in: query
+          schema:
+            type: string
+            enum: ["True", "False"]
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
               type: object
-              additionalProperties: true
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
       responses:
         '201':
           description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
 
   /v1/files/s3/{id}:
     get:
@@ -491,6 +601,8 @@ paths:
       responses:
         '200':
           description: File stream
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags: [Files S3]
       summary: Delete S3 file by id
@@ -501,6 +613,8 @@ paths:
       responses:
         '200':
           description: File deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /v1/files/s3/base64:
     post:
@@ -523,14 +637,10 @@ paths:
       responses:
         '201':
           description: File uploaded
-    get:
-      tags: [Files S3]
-      summary: Not implemented
-      security:
-        - bearerAuth: []
-      responses:
-        '405':
-          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
 
   /v1/files/s3/base64/{id}:
     get:
@@ -542,33 +652,18 @@ paths:
         - $ref: '#/components/parameters/Id'
       responses:
         '200':
-          description: Base64 file
-    post:
-      tags: [Files S3]
-      summary: Upload S3 file from base64 payload
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '405':
-          description: Method not allowed when id is provided
-
-  /v1/test:
-    get:
-      tags: [Health]
-      summary: Test endpoint placeholder
-      security: []
-      responses:
-        '200':
-          description: Placeholder
-    post:
-      tags: [Health]
-      summary: Test endpoint placeholder
-      security: []
-      responses:
-        '200':
-          description: Placeholder
+          description: File with base64 content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file:
+                    type: object
+                  base64:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 components:
   securitySchemes:
@@ -576,6 +671,38 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    ValidationError:
+      description: Validation error (missing or invalid fields)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
 
   parameters:
     Id:
@@ -621,6 +748,13 @@ components:
       schema:
         type: string
         enum: [request, validate-code]
+    ConfirmPhoneAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [request, validate-code]
 
   schemas:
     MessageEnvelope:
@@ -638,6 +772,8 @@ components:
       properties:
         session:
           $ref: '#/components/schemas/Session'
+        user:
+          $ref: '#/components/schemas/User'
         message:
           type: string
         error:
@@ -646,58 +782,34 @@ components:
     AuthEnvelope:
       type: object
       properties:
-        Bearer:
+        access_token:
+          type: string
+        refresh_token:
           type: string
         session:
           $ref: '#/components/schemas/Session'
+        user:
+          $ref: '#/components/schemas/User'
         message:
           type: string
         error:
           type: string
 
-    PaginatedUsersEnvelope:
+    CursorUsersEnvelope:
       type: object
       properties:
-        max_page:
-          type: integer
-        actual_page:
-          type: integer
-        per_page:
-          type: integer
         data:
           type: array
           items:
             $ref: '#/components/schemas/User'
+        returned:
+          type: integer
+          description: Number of items returned in this page
+        next_cursor:
+          type: string
+          description: Pass as `cursor` query param to fetch the next page. Absent when no more pages.
         error:
           type: string
-
-    DataUserEnvelope:
-      type: object
-      properties:
-        id:
-          type: string
-        username:
-          type: string
-        email:
-          type: string
-        phone:
-          type: string
-          nullable: true
-        role_id:
-          type: string
-        first_name:
-          type: string
-        last_name:
-          type: string
-        birthday:
-          type: string
-          format: date-time
-        verified:
-          type: boolean
-        email_confirmed:
-          type: boolean
-        phone_confirmed:
-          type: boolean
 
     LoginRequest:
       type: object
@@ -705,52 +817,66 @@ components:
       properties:
         username:
           type: string
+          description: Username or email address
         password:
           type: string
+          format: password
         device_uuid:
           type: string
 
     CreateUserRequest:
       type: object
-      required: [username, password, email, first_name, last_name, birthday]
+      required: [username, password, email, first_name, last_name]
       properties:
         username:
           type: string
         password:
           type: string
+          format: password
         email:
           type: string
+          format: email
         phone:
           type: string
+          nullable: true
         first_name:
           type: string
         last_name:
           type: string
         birthday:
           type: string
-          format: date-time
+          format: date
+          description: "Optional. Date in YYYY-MM-DD format"
+          example: "1998-01-10"
+          nullable: true
         device_uuid:
           type: string
 
     UpdateUserRequest:
       type: object
-      additionalProperties: true
       properties:
         username:
           type: string
         email:
           type: string
+          format: email
         phone:
           type: string
+          nullable: true
         first_name:
           type: string
         last_name:
           type: string
         birthday:
           type: string
-          format: date-time
-        role_id:
+          format: date
+          description: "Date in YYYY-MM-DD format"
+          example: "1998-01-10"
+          nullable: true
+        role:
           type: string
+          enum: [Admin, User]
+          description: "Admin only. Available roles: Admin, User"
         enable:
           type: boolean
 
@@ -759,17 +885,22 @@ components:
       properties:
         email:
           type: string
+          format: email
         phone_number:
           type: string
 
     PasswordRecoveryValidateRequest:
       type: object
-      required: [otp]
+      required: [otp, email]
       properties:
         otp:
           type: string
+        email:
+          type: string
+          format: email
         device_uuid:
           type: string
+          description: "Optional. Device UUID to associate the session with"
 
     ChangePasswordRequest:
       type: object
@@ -777,6 +908,7 @@ components:
       properties:
         new_password:
           type: string
+          format: password
 
     ConfirmEmailValidateRequest:
       type: object
@@ -785,20 +917,52 @@ components:
         token:
           type: string
 
-    RoleInput:
-      type: object
-      required: [name]
-      properties:
-        name:
-          type: string
-        enable:
-          type: boolean
-
     StatusInput:
       type: object
       required: [description]
       properties:
         description:
+          type: string
+
+    Status:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        device_id:
+          type: string
+          nullable: true
+        template_id:
+          type: string
+          nullable: true
+        message:
+          type: string
+        readed:
+          type: integer
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+
+    UpdateDeviceRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          nullable: true
+        app_version_id:
           type: string
 
     Session:
@@ -810,6 +974,7 @@ components:
           type: string
         device_id:
           type: string
+          nullable: true
         created:
           type: string
           format: date-time
@@ -818,8 +983,6 @@ components:
           format: date-time
         enable:
           type: boolean
-        user:
-          $ref: '#/components/schemas/User'
 
     User:
       type: object
@@ -830,32 +993,35 @@ components:
           type: string
         email:
           type: string
+          format: email
         phone:
           type: string
           nullable: true
-        role_id:
+        role:
           type: string
-        created:
-          type: string
-          format: date-time
-        updated:
-          type: string
-          format: date-time
-        enable:
-          type: boolean
-        first_name:
-          type: string
+          enum: [Admin, User]
+          description: "Available roles: Admin, User"
         last_name:
           type: string
         birthday:
           type: string
-          format: date-time
+          format: date
+          description: "Date in YYYY-MM-DD format"
+          example: "1998-01-10"
         verified:
           type: boolean
         email_confirmed:
           type: boolean
         phone_confirmed:
           type: boolean
+        enable:
+          type: boolean
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
 
     Device:
       type: object
@@ -897,6 +1063,7 @@ components:
           type: string
         is_thumbnail:
           type: integer
+          description: "1 if thumbnail, 0 otherwise"
         url:
           type: string
           nullable: true
@@ -913,24 +1080,3 @@ components:
         enable:
           type: boolean
 
-    Notification:
-      type: object
-      properties:
-        id:
-          type: string
-        user_id:
-          type: string
-        device_id:
-          type: string
-        template_id:
-          type: string
-        message:
-          type: string
-        readed:
-          type: integer
-        created:
-          type: string
-          format: date-time
-        updated:
-          type: string
-          format: date-time

@@ -2,28 +2,20 @@ package middleware
 
 import (
 	"net/http"
-	"strings"
 )
 
-// RequireRole returns middleware that checks the role's access list.
-// allowedControllers is the list of controller names this role may access.
-// An empty allowList means the role has unrestricted access.
-func RequireRole(allowedControllers []string) func(http.Handler) http.Handler {
+// RequireRole returns middleware that allows access only to users whose JWT
+// role matches one of the provided role names (e.g. domain.RoleAdmin).
+func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if len(allowedControllers) == 0 {
-				next.ServeHTTP(w, r)
+			claims, ok := ClaimsFromContext(r.Context())
+			if !ok {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
-			// Derive controller name from first path segment after /v1/
-			parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/"), "/")
-			if len(parts) == 0 {
-				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-				return
-			}
-			controller := parts[0]
-			for _, a := range allowedControllers {
-				if a == controller {
+			for _, role := range allowedRoles {
+				if claims.Role == role {
 					next.ServeHTTP(w, r)
 					return
 				}

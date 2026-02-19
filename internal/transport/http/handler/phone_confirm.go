@@ -9,16 +9,16 @@ import (
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
-// EmailConfirmHandler handles email confirmation flow endpoints.
-type EmailConfirmHandler struct {
+// PhoneConfirmHandler handles phone confirmation flow endpoints.
+type PhoneConfirmHandler struct {
 	svc auth.Service
 }
 
-func NewEmailConfirmHandler(svc auth.Service) *EmailConfirmHandler {
-	return &EmailConfirmHandler{svc: svc}
+func NewPhoneConfirmHandler(svc auth.Service) *PhoneConfirmHandler {
+	return &PhoneConfirmHandler{svc: svc}
 }
 
-func (h *EmailConfirmHandler) Action(w http.ResponseWriter, r *http.Request) {
+func (h *PhoneConfirmHandler) Action(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -26,26 +26,25 @@ func (h *EmailConfirmHandler) Action(w http.ResponseWriter, r *http.Request) {
 	}
 	switch chi.URLParam(r, "action") {
 	case "request":
-		if err := h.svc.RequestEmailConfirmation(r.Context(), claims.UserID); err != nil {
+		if err := h.svc.RequestPhoneConfirmation(r.Context(), claims.UserID); err != nil {
 			httpError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "confirmation email sent"})
+		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "confirmation SMS sent"})
 	case "validate-code":
 		var body struct {
-			Token string `json:"token"`
+			OTP string `json:"otp"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		if err := h.svc.ValidateEmailToken(r.Context(), claims.UserID, body.Token); err != nil {
+		if err := h.svc.ValidatePhoneOTP(r.Context(), claims.UserID, body.OTP); err != nil {
 			httpError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "email confirmed"})
+		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "phone confirmed"})
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}
 }
-

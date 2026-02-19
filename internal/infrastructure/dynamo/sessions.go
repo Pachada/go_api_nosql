@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -44,7 +43,7 @@ func (r *SessionRepo) Get(ctx context.Context, sessionID string) (*domain.Sessio
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("session not found")
+		return nil, fmt.Errorf("session not found: %w", domain.ErrNotFound)
 	}
 	var s domain.Session
 	if err := attributevalue.UnmarshalMap(out.Item, &s); err != nil {
@@ -90,4 +89,39 @@ func (r *SessionRepo) Update(ctx context.Context, sessionID string, updates map[
 		ExpressionAttributeValues: values,
 	})
 	return err
+}
+
+// GetByRefreshToken looks up a session by its opaque refresh token via GSI.
+// Returns ErrUnauthorized (session disabled) when found but inactive.
+func (r *SessionRepo) GetByRefreshToken(ctx context.Context, token string) (*domain.Session, error) {
+	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("refresh_token-index"),
+		KeyConditionExpression: aws.String("refresh_token = :rt"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":rt": &types.AttributeValueMemberS{Value: token},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Items) == 0 {
+		return nil, fmt.Errorf("session not found: %w", domain.ErrNotFound)
+	}
+	var s domain.Session
+	if err := attributevalue.UnmarshalMap(out.Items[0], &s); err != nil {
+		return nil, err
+	}
+	if !s.Enable {
+		return nil, fmt.Errorf("session disabled: %w", domain.ErrUnauthorized)
+	}
+	return &s, nil
+}
+
+// RotateRefreshToken replaces the refresh token and expiry on a session.
+func (r *SessionRepo) RotateRefreshToken(ctx context.Context, sessionID, newToken string, newExpiry int64) error {
+	return r.Update(ctx, sessionID, map[string]interface{}{
+		"refresh_token":      newToken,
+		"refresh_expires_at": newExpiry,
+	})
 }

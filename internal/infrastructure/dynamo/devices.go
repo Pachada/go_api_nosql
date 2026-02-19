@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -44,7 +43,7 @@ func (r *DeviceRepo) Get(ctx context.Context, deviceID string) (*domain.Device, 
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("device not found")
+		return nil, fmt.Errorf("device not found: %w", domain.ErrNotFound)
 	}
 	var d domain.Device
 	if err := attributevalue.UnmarshalMap(out.Item, &d); err != nil {
@@ -67,7 +66,7 @@ func (r *DeviceRepo) GetByUUID(ctx context.Context, uuid string) (*domain.Device
 		return nil, err
 	}
 	if len(out.Items) == 0 {
-		return nil, errors.New("device not found")
+		return nil, fmt.Errorf("device not found: %w", domain.ErrNotFound)
 	}
 	var d domain.Device
 	if err := attributevalue.UnmarshalMap(out.Items[0], &d); err != nil {
@@ -81,7 +80,10 @@ func (r *DeviceRepo) ListByUser(ctx context.Context, userID string) ([]domain.De
 		TableName:              aws.String(r.tableName),
 		IndexName:              aws.String("user_id-index"),
 		KeyConditionExpression: aws.String("user_id = :uid"),
-		FilterExpression:       aws.String("enable = :t"),
+		FilterExpression:       aws.String("#en = :t"),
+		ExpressionAttributeNames: map[string]string{
+			"#en": "enable",
+		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":uid": &types.AttributeValueMemberS{Value: userID},
 			":t":   &types.AttributeValueMemberBOOL{Value: true},

@@ -1,18 +1,21 @@
 package file
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	s3infra "github.com/go-api-nosql/internal/infrastructure/s3"
-	"github.com/google/uuid"
+	"github.com/go-api-nosql/internal/pkg/id"
 )
 
 type UploadInput struct {
@@ -43,18 +46,25 @@ func NewService(s3 *s3infra.Store, fileRepo *dynamo.FileRepo) Service {
 }
 
 func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, error) {
-	key := fmt.Sprintf("files/%s/%s", input.UploaderID, input.Filename)
-	if _, err := s.s3.Upload(ctx, key, input.Reader, input.ContentType); err != nil {
+	// NOTE: callers are responsible for enforcing a maximum file size before
+	// invoking Upload. io.TeeReader streams through the SHA-256 hasher, so
+	// the full content is read into memory by the S3 upload; large files will
+	// increase memory pressure proportionally.
+	safeName := sanitizeFilename(input.Filename)
+	key := fmt.Sprintf("files/%s/%s", input.UploaderID, safeName)
+	hasher := sha256.New()
+	tee := io.TeeReader(input.Reader, hasher)
+	if _, err := s.s3.Upload(ctx, key, tee, input.ContentType); err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
 	f := &domain.File{
-		FileID:           uuid.NewString(),
+		FileID:           id.New(),
 		Object:           key,
 		Size:             input.Size,
 		Type:             input.ContentType,
-		Name:             input.Filename,
-		Hash:             "",
+		Name:             safeName,
+		Hash:             hex.EncodeToString(hasher.Sum(nil)),
 		IsThumbnail:      btoi(input.IsThumbnail),
 		IsPrivate:        input.IsPrivate,
 		UploadedByUserID: input.UploaderID,
@@ -69,18 +79,28 @@ func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, 
 }
 
 func (s *service) UploadBase64(ctx context.Context, filename, base64Data string, uploaderID string) (*domain.File, error) {
-	key := fmt.Sprintf("files/%s/%s", uploaderID, filename)
-	if _, err := s.s3.UploadBase64(ctx, key, base64Data); err != nil {
+	// NOTE: base64 decoding materialises the full payload in memory. Callers
+	// should enforce a maximum payload size (e.g. via http.MaxBytesReader)
+	// before invoking UploadBase64 to prevent excessive memory usage.
+	safeName := sanitizeFilename(filename)
+	key := fmt.Sprintf("files/%s/%s", uploaderID, safeName)
+	decoded, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64: %w", domain.ErrBadRequest)
+	}
+	contentType := contentTypeFromName(safeName)
+	if _, err := s.s3.Upload(ctx, key, bytes.NewReader(decoded), contentType); err != nil {
 		return nil, err
 	}
+	sum := sha256.Sum256(decoded)
 	now := time.Now().UTC()
 	f := &domain.File{
-		FileID:           uuid.NewString(),
+		FileID:           id.New(),
 		Object:           key,
-		Size:             0,
-		Type:             contentTypeFromName(filename),
-		Name:             filename,
-		Hash:             "",
+		Size:             int64(len(decoded)),
+		Type:             contentType,
+		Name:             safeName,
+		Hash:             hex.EncodeToString(sum[:]),
 		IsThumbnail:      0,
 		IsPrivate:        false,
 		UploadedByUserID: uploaderID,
@@ -100,10 +120,10 @@ func (s *service) Download(ctx context.Context, fileID, requesterID string, isAd
 		return nil, nil, err
 	}
 	if !f.Enable {
-		return nil, nil, errors.New("file not found")
+		return nil, nil, fmt.Errorf("file not found: %w", domain.ErrNotFound)
 	}
 	if f.IsPrivate && f.UploadedByUserID != requesterID && !isAdmin {
-		return nil, nil, errors.New("access denied")
+		return nil, nil, fmt.Errorf("access denied: %w", domain.ErrForbidden)
 	}
 	rc, err := s.s3.Download(ctx, f.Object)
 	if err != nil {
@@ -118,10 +138,10 @@ func (s *service) Delete(ctx context.Context, fileID, requesterID string, isAdmi
 		return err
 	}
 	if !f.Enable {
-		return errors.New("file not found")
+		return fmt.Errorf("file not found: %w", domain.ErrNotFound)
 	}
 	if f.IsPrivate && f.UploadedByUserID != requesterID && !isAdmin {
-		return errors.New("access denied")
+		return fmt.Errorf("access denied: %w", domain.ErrForbidden)
 	}
 	if err := s.s3.Delete(ctx, f.Object); err != nil {
 		return err
@@ -161,4 +181,25 @@ func contentTypeFromName(filename string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// sanitizeFilename strips directory components and keeps only safe characters
+// (alphanumeric, dot, dash, underscore) to prevent path traversal in S3 keys.
+// When the result would be empty or generic, a nanosecond timestamp suffix is
+// appended to avoid S3 key collisions.
+func sanitizeFilename(name string) string {
+	name = path.Base(name) // drop any leading path components / traversal sequences
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	if result := b.String(); result != "" && result != "." {
+		return result
+	}
+	return fmt.Sprintf("_%d", time.Now().UnixNano())
 }

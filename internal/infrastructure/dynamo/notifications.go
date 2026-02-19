@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -43,7 +42,7 @@ func (r *NotificationRepo) Get(ctx context.Context, notificationID string) (*dom
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("notification not found")
+		return nil, fmt.Errorf("notification not found: %w", domain.ErrNotFound)
 	}
 	var n domain.Notification
 	if err := attributevalue.UnmarshalMap(out.Item, &n); err != nil {
@@ -74,17 +73,25 @@ func (r *NotificationRepo) ListUnread(ctx context.Context, userID string) ([]dom
 	return notifications, nil
 }
 
-func (r *NotificationRepo) MarkAsRead(ctx context.Context, notificationID string) error {
+func (r *NotificationRepo) MarkAsRead(ctx context.Context, notificationID string) (*domain.Notification, error) {
 	expr, names, values, err := buildUpdateExpr(map[string]interface{}{"readed": 1})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+	out, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("notification_id", notificationID),
 		UpdateExpression:          aws.String(expr),
 		ExpressionAttributeNames:  names,
 		ExpressionAttributeValues: values,
+		ReturnValues:              types.ReturnValueAllNew,
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	var n domain.Notification
+	if err := attributevalue.UnmarshalMap(out.Attributes, &n); err != nil {
+		return nil, err
+	}
+	return &n, nil
 }
