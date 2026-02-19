@@ -1,9 +1,7 @@
 package s3infra
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"strings"
@@ -68,16 +66,6 @@ func (s *Store) Upload(ctx context.Context, key string, r io.Reader, contentType
 		return "", fmt.Errorf("s3 put object: %w", err)
 	}
 	return fmt.Sprintf("s3://%s/%s", s.bucket, key), nil
-}
-
-// UploadBase64 decodes base64 data and uploads it to S3.
-func (s *Store) UploadBase64(ctx context.Context, key, b64Data string) (string, error) {
-	decoded, err := base64.StdEncoding.DecodeString(b64Data)
-	if err != nil {
-		return "", fmt.Errorf("decode base64: %w", err)
-	}
-	contentType := detectContentType(key)
-	return s.Upload(ctx, key, bytes.NewReader(decoded), contentType)
 }
 
 // Download retrieves a file from S3 and returns its stream.
