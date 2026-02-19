@@ -67,13 +67,34 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 	sensitiveRL := appmiddleware.NewRateLimiter(ctx, rate.Limit(5), 10)
 
 	refreshDur := time.Duration(cfg.RefreshTokenExpiryDays) * 24 * time.Hour
-	sessionSvc := session.NewService(deps.SessionRepo, deps.UserRepo, deps.DeviceRepo, deps.JWTProvider, refreshDur)
-	userSvc := user.NewService(deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.JWTProvider, refreshDur)
+	sessionSvc := session.NewService(session.ServiceDeps{
+		SessionRepo:     deps.SessionRepo,
+		UserRepo:        deps.UserRepo,
+		DeviceRepo:      deps.DeviceRepo,
+		JWTProvider:     deps.JWTProvider,
+		RefreshTokenDur: refreshDur,
+	})
+	userSvc := user.NewService(user.ServiceDeps{
+		UserRepo:        deps.UserRepo,
+		SessionRepo:     deps.SessionRepo,
+		DeviceRepo:      deps.DeviceRepo,
+		JWTProvider:     deps.JWTProvider,
+		RefreshTokenDur: refreshDur,
+	})
 	statusSvc := status.NewService(deps.StatusRepo)
 	deviceSvc := device.NewService(deps.DeviceRepo, deps.AppVersionRepo)
 	notifSvc := notification.NewService(deps.NotificationRepo)
 	fileSvc := fileapp.NewService(deps.S3Store, deps.FileRepo)
-	authSvc := auth.NewService(deps.VerificationRepo, deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.Mailer, deps.SMSSender, deps.JWTProvider, refreshDur)
+	authSvc := auth.NewService(auth.ServiceDeps{
+		VerificationRepo: deps.VerificationRepo,
+		UserRepo:         deps.UserRepo,
+		SessionRepo:      deps.SessionRepo,
+		DeviceRepo:       deps.DeviceRepo,
+		Mailer:           deps.Mailer,
+		SMSSender:        deps.SMSSender,
+		JWTProvider:      deps.JWTProvider,
+		RefreshTokenDur:  refreshDur,
+	})
 
 	healthH := handler.NewHealthHandler()
 	sessionH := handler.NewSessionHandler(sessionSvc)

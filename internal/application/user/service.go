@@ -31,8 +31,22 @@ type service struct {
 	refreshTokenDur time.Duration
 }
 
-func NewService(repo *dynamo.UserRepo, sessionRepo *dynamo.SessionRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider, refreshTokenDur time.Duration) Service {
-	return &service{repo: repo, sessionRepo: sessionRepo, deviceRepo: deviceRepo, jwtProvider: jwtProvider, refreshTokenDur: refreshTokenDur}
+type ServiceDeps struct {
+	UserRepo        *dynamo.UserRepo
+	SessionRepo     *dynamo.SessionRepo
+	DeviceRepo      *dynamo.DeviceRepo
+	JWTProvider     *jwtinfra.Provider
+	RefreshTokenDur time.Duration
+}
+
+func NewService(deps ServiceDeps) Service {
+	return &service{
+		repo:            deps.UserRepo,
+		sessionRepo:     deps.SessionRepo,
+		deviceRepo:      deps.DeviceRepo,
+		jwtProvider:     deps.JWTProvider,
+		refreshTokenDur: deps.RefreshTokenDur,
+	}
 }
 
 func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error) {

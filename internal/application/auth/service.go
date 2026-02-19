@@ -56,25 +56,27 @@ type service struct {
 	refreshTokenDur  time.Duration
 }
 
-func NewService(
-	verificationRepo *dynamo.VerificationRepo,
-	userRepo *dynamo.UserRepo,
-	sessionRepo *dynamo.SessionRepo,
-	deviceRepo *dynamo.DeviceRepo,
-	mailer smtp.Mailer,
-	smsSender sns.SMSSender,
-	jwtProvider *jwtinfra.Provider,
-	refreshTokenDur time.Duration,
-) Service {
+type ServiceDeps struct {
+	VerificationRepo *dynamo.VerificationRepo
+	UserRepo         *dynamo.UserRepo
+	SessionRepo      *dynamo.SessionRepo
+	DeviceRepo       *dynamo.DeviceRepo
+	Mailer           smtp.Mailer
+	SMSSender        sns.SMSSender
+	JWTProvider      *jwtinfra.Provider
+	RefreshTokenDur  time.Duration
+}
+
+func NewService(deps ServiceDeps) Service {
 	return &service{
-		verificationRepo: verificationRepo,
-		userRepo:         userRepo,
-		sessionRepo:      sessionRepo,
-		deviceRepo:       deviceRepo,
-		mailer:           mailer,
-		smsSender:        smsSender,
-		jwtProvider:      jwtProvider,
-		refreshTokenDur:  refreshTokenDur,
+		verificationRepo: deps.VerificationRepo,
+		userRepo:         deps.UserRepo,
+		sessionRepo:      deps.SessionRepo,
+		deviceRepo:       deps.DeviceRepo,
+		mailer:           deps.Mailer,
+		smsSender:        deps.SMSSender,
+		jwtProvider:      deps.JWTProvider,
+		refreshTokenDur:  deps.RefreshTokenDur,
 	}
 }
 

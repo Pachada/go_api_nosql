@@ -44,13 +44,21 @@ type service struct {
 	refreshTokenDur  time.Duration
 }
 
-func NewService(sessionRepo *dynamo.SessionRepo, userRepo *dynamo.UserRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider, refreshTokenDur time.Duration) Service {
+type ServiceDeps struct {
+	SessionRepo     *dynamo.SessionRepo
+	UserRepo        *dynamo.UserRepo
+	DeviceRepo      *dynamo.DeviceRepo
+	JWTProvider     *jwtinfra.Provider
+	RefreshTokenDur time.Duration
+}
+
+func NewService(deps ServiceDeps) Service {
 	return &service{
-		sessionRepo:     sessionRepo,
-		userRepo:        userRepo,
-		deviceRepo:      deviceRepo,
-		jwtProvider:     jwtProvider,
-		refreshTokenDur: refreshTokenDur,
+		sessionRepo:     deps.SessionRepo,
+		userRepo:        deps.UserRepo,
+		deviceRepo:      deps.DeviceRepo,
+		jwtProvider:     deps.JWTProvider,
+		refreshTokenDur: deps.RefreshTokenDur,
 	}
 }
 
