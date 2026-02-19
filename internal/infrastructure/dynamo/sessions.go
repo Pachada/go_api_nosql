@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -65,14 +66,20 @@ func (r *SessionRepo) SoftDeleteByUser(ctx context.Context, userID string) error
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	var firstErr error
 	for _, item := range out.Items {
 		sidAttr, ok := item["session_id"].(*types.AttributeValueMemberS)
 		if !ok {
 			continue
 		}
-		_ = r.Update(ctx, sidAttr.Value, map[string]interface{}{"enable": false, "updated_at": now})
+		if err := r.Update(ctx, sidAttr.Value, map[string]interface{}{"enable": false, "updated_at": now}); err != nil {
+			slog.Warn("failed to disable session during user soft-delete", "session_id", sidAttr.Value, "user_id", userID, "err", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
-	return nil
+	return firstErr
 }
 
 func (r *SessionRepo) Update(ctx context.Context, sessionID string, updates map[string]interface{}) error {
