@@ -91,7 +91,10 @@ func (r *UserRepo) SoftDelete(ctx context.Context, userID string) error {
 func (r *UserRepo) ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error) {
 	input := &dynamodb.ScanInput{
 		TableName:        aws.String(r.tableName),
-		FilterExpression: aws.String("enable = :t"),
+		FilterExpression: aws.String("#en = :t"),
+		ExpressionAttributeNames: map[string]string{
+			"#en": "enable",
+		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":t": &types.AttributeValueMemberBOOL{Value: true},
 		},

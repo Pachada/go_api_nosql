@@ -81,7 +81,10 @@ func (r *DeviceRepo) ListByUser(ctx context.Context, userID string) ([]domain.De
 		TableName:              aws.String(r.tableName),
 		IndexName:              aws.String("user_id-index"),
 		KeyConditionExpression: aws.String("user_id = :uid"),
-		FilterExpression:       aws.String("enable = :t"),
+		FilterExpression:       aws.String("#en = :t"),
+		ExpressionAttributeNames: map[string]string{
+			"#en": "enable",
+		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":uid": &types.AttributeValueMemberS{Value: userID},
 			":t":   &types.AttributeValueMemberBOOL{Value: true},
