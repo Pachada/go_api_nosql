@@ -72,16 +72,16 @@ func (r *StatusRepo) HardDelete(ctx context.Context, statusID string) error {
 }
 
 func (r *StatusRepo) Update(ctx context.Context, statusID string, updates map[string]interface{}) error {
-	expr, names, values, err := buildUpdateExpr(updates)
+	ue, err := buildUpdateExpr(updates)
 	if err != nil {
 		return err
 	}
 	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("status_id", statusID),
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		UpdateExpression:          aws.String(ue.Expr),
+		ExpressionAttributeNames:  ue.Names,
+		ExpressionAttributeValues: ue.Values,
 	})
 	return err
 }

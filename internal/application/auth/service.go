@@ -33,9 +33,15 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" validate:"required"`
 }
 
+type ValidateOTPResult struct {
+	Bearer       string
+	RefreshToken string
+	Session      *domain.Session
+}
+
 type PasswordRecoveryService interface {
 	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
-	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (bearer, refreshToken string, session *domain.Session, err error)
+	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error)
 	ChangePassword(ctx context.Context, userID, newPassword string) error
 }
 
@@ -148,23 +154,23 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
 }
 
-func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, string, *domain.Session, error) {
+func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error) {
 	if req.Email == nil {
-		return "", "", nil, fmt.Errorf("email required to validate OTP: %w", domain.ErrBadRequest)
+		return nil, fmt.Errorf("email required to validate OTP: %w", domain.ErrBadRequest)
 	}
 	u, err := s.userRepo.GetByEmail(ctx, *req.Email)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	v, err := s.verificationRepo.Get(ctx, u.UserID, "otp")
 	if err != nil {
-		return "", "", nil, fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
+		return nil, fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
 	}
 	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(req.OTP)) != 1 {
-		return "", "", nil, fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
+		return nil, fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
-		return "", "", nil, fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
+		return nil, fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
 	}
 	if err := s.verificationRepo.Delete(ctx, u.UserID, "otp"); err != nil {
 		slog.Warn("failed to delete OTP verification record", "user_id", u.UserID, "err", err)
@@ -172,11 +178,11 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 
 	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
 	if err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	refreshToken, err := pkgtoken.NewRefreshToken()
 	if err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	now := time.Now().UTC()
 	sess := &domain.Session{
@@ -190,14 +196,14 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	bearer, err := s.jwtProvider.Sign(u.UserID, dev.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	sess.User = u
-	return bearer, refreshToken, sess, nil
+	return &ValidateOTPResult{Bearer: bearer, RefreshToken: refreshToken, Session: sess}, nil
 }
 
 func (s *service) ChangePassword(ctx context.Context, userID, newPassword string) error {

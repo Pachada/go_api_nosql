@@ -57,16 +57,16 @@ func (r *FileRepo) SoftDelete(ctx context.Context, fileID string) error {
 
 func (r *FileRepo) update(ctx context.Context, fileID string, updates map[string]interface{}) error {
 	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	expr, names, values, err := buildUpdateExpr(updates)
+	ue, err := buildUpdateExpr(updates)
 	if err != nil {
 		return err
 	}
 	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("file_id", fileID),
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		UpdateExpression:          aws.String(ue.Expr),
+		ExpressionAttributeNames:  ue.Names,
+		ExpressionAttributeValues: ue.Values,
 	})
 	return err
 }
