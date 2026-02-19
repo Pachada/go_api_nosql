@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -42,7 +41,7 @@ func (r *StatusRepo) Get(ctx context.Context, statusID string) (*domain.Status, 
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("status not found")
+		return nil, fmt.Errorf("status not found: %w", domain.ErrNotFound)
 	}
 	var s domain.Status
 	if err := attributevalue.UnmarshalMap(out.Item, &s); err != nil {

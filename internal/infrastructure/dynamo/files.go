@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -43,7 +42,7 @@ func (r *FileRepo) Get(ctx context.Context, fileID string) (*domain.File, error)
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("file not found")
+		return nil, fmt.Errorf("file not found: %w", domain.ErrNotFound)
 	}
 	var f domain.File
 	if err := attributevalue.UnmarshalMap(out.Item, &f); err != nil {

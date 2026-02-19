@@ -3,7 +3,6 @@ package dynamo
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"time"
 
@@ -45,14 +44,14 @@ func (r *UserRepo) Get(ctx context.Context, userID string) (*domain.User, error)
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("user not found")
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	var u domain.User
 	if err := attributevalue.UnmarshalMap(out.Item, &u); err != nil {
 		return nil, err
 	}
 	if u.DeletedAt != nil {
-		return nil, errors.New("user not found")
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	return &u, nil
 }
@@ -152,7 +151,7 @@ func (r *UserRepo) queryGSI(ctx context.Context, index, attr, value string) (*do
 		return nil, err
 	}
 	if len(out.Items) == 0 {
-		return nil, errors.New("user not found")
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	var u domain.User
 	if err := attributevalue.UnmarshalMap(out.Items[0], &u); err != nil {

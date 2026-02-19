@@ -2,6 +2,7 @@ package device
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
@@ -13,8 +14,12 @@ import (
 // creates a new one associated with userID and persists it.
 func Resolve(ctx context.Context, repo *dynamo.DeviceRepo, deviceUUID *string, userID string) (*domain.Device, error) {
 	if deviceUUID != nil {
-		if d, err := repo.GetByUUID(ctx, *deviceUUID); err == nil {
+		d, err := repo.GetByUUID(ctx, *deviceUUID)
+		if err == nil {
 			return d, nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			return nil, err
 		}
 	}
 	devUUID := id.New()

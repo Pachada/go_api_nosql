@@ -91,8 +91,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 		// ── Public routes (no auth) ──────────────────────────────────────────
 		r.Get("/health-check/{action}", healthH.Ping)
 		r.Post("/health-check/{action}", healthH.Ping)
-		r.Get("/test", healthH.Test)
-		r.Post("/test", healthH.Test)
+		r.Get("/roles", handler.ListRoles)
 		r.With(sensitiveRL.Limit).Post("/sessions/login", sessionH.Login)
 		r.Post("/sessions/refresh", sessionH.Refresh)
 		r.With(sensitiveRL.Limit).Post("/users", userH.Register)
@@ -108,7 +107,6 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			// Any authenticated user
 			r.Get("/users/{id}", userH.Get)
 			r.Put("/users/{id}", userH.Update)
-			r.Get("/roles", handler.ListRoles)
 			r.Get("/statuses", statusH.List)
 			r.Get("/statuses/{id}", statusH.Get)
 			r.Get("/devices", deviceH.List)
@@ -121,7 +119,6 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			r.Post("/files/s3", fileH.Upload)
 			r.Post("/files/s3/base64", fileH.UploadBase64)
 			r.Get("/files/s3/base64/{id}", fileH.GetBase64)
-			r.Post("/files/s3/base64/{id}", fileH.MethodNotAllowed)
 			r.Get("/files/s3/{id}", fileH.Download)
 			r.Delete("/files/s3/{id}", fileH.Delete)
 			r.Post("/password-recovery/change-password", pwH.ChangePassword)

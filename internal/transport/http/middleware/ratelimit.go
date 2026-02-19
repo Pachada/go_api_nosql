@@ -51,11 +51,13 @@ func (rl *RateLimiter) get(ip string) *rate.Limiter {
 
 // cleanup removes stale entries every 5 minutes until ctx is cancelled.
 func (rl *RateLimiter) cleanup(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(5 * time.Minute):
+		case <-ticker.C:
 			rl.mu.Lock()
 			for ip, v := range rl.limiters {
 				if time.Since(v.lastSeen) > 10*time.Minute {

@@ -86,7 +86,10 @@ func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUser
 	if err != nil {
 		return nil, "", "", err
 	}
-	refreshToken := pkgtoken.NewRefreshToken()
+	refreshToken, err := pkgtoken.NewRefreshToken()
+	if err != nil {
+		return nil, "", "", err
+	}
 	now := time.Now().UTC()
 	sess := &domain.Session{
 		SessionID:        id.New(),
@@ -145,7 +148,12 @@ func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUs
 		updates["birthday"] = t
 	}
 	if req.Role != nil {
-		updates["role"] = *req.Role
+		switch *req.Role {
+		case domain.RoleAdmin, domain.RoleUser:
+			updates["role"] = *req.Role
+		default:
+			return nil, fmt.Errorf("invalid role: %w", domain.ErrBadRequest)
+		}
 	}
 	if req.Enable != nil {
 		updates["enable"] = *req.Enable

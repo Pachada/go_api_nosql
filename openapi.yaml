@@ -16,6 +16,7 @@ tags:
   - name: Devices
   - name: Notifications
   - name: Files S3
+  - name: Phone Confirmation
 paths:
   /v1/health-check/{action}:
     get:
@@ -1000,7 +1001,6 @@ components:
           type: string
           enum: [Admin, User]
           description: "Available roles: Admin, User"
-          type: string
         last_name:
           type: string
         birthday:

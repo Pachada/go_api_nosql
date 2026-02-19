@@ -69,7 +69,8 @@ func main() {
 		JWTProvider:      jwtProvider,
 	}
 
-	router := transporthttp.NewRouter(context.Background(), cfg, deps)
+	routerCtx, routerCancel := context.WithCancel(context.Background())
+	router := transporthttp.NewRouter(routerCtx, cfg, deps)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.AppPort),
@@ -96,5 +97,6 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("forced shutdown: %v", err)
 	}
+	routerCancel()
 	log.Println("Server stopped")
 }

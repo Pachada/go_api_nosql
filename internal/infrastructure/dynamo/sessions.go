@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -44,7 +43,7 @@ func (r *SessionRepo) Get(ctx context.Context, sessionID string) (*domain.Sessio
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("session not found")
+		return nil, fmt.Errorf("session not found: %w", domain.ErrNotFound)
 	}
 	var s domain.Session
 	if err := attributevalue.UnmarshalMap(out.Item, &s); err != nil {
@@ -107,7 +106,7 @@ func (r *SessionRepo) GetByRefreshToken(ctx context.Context, token string) (*dom
 		return nil, err
 	}
 	if len(out.Items) == 0 {
-		return nil, errors.New("session not found")
+		return nil, fmt.Errorf("session not found: %w", domain.ErrNotFound)
 	}
 	var s domain.Session
 	if err := attributevalue.UnmarshalMap(out.Items[0], &s); err != nil {

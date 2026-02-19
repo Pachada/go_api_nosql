@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -71,7 +72,10 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 	if err != nil {
 		return nil, err
 	}
-	refreshToken := pkgtoken.NewRefreshToken()
+	refreshToken, err := pkgtoken.NewRefreshToken()
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	sess := &domain.Session{
 		SessionID:        id.New(),
@@ -101,6 +105,9 @@ func (s *service) Logout(ctx context.Context, sessionID string) error {
 func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Session, error) {
 	sess, err := s.sessionRepo.Get(ctx, sessionID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("session not found: %w", domain.ErrUnauthorized)
+		}
 		return nil, err
 	}
 	if !sess.Enable {
@@ -108,6 +115,9 @@ func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Ses
 	}
 	u, err := s.userRepo.Get(ctx, sess.UserID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("user not found: %w", domain.ErrUnauthorized)
+		}
 		return nil, err
 	}
 	sess.User = u
@@ -122,13 +132,19 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	if sess.RefreshExpiresAt < time.Now().Unix() {
 		return "", "", fmt.Errorf("refresh token expired: %w", domain.ErrUnauthorized)
 	}
-	newToken := pkgtoken.NewRefreshToken()
-	newExpiry := time.Now().Add(s.refreshTokenDur).Unix()
+	newToken, err := pkgtoken.NewRefreshToken()
+	if err != nil {
+		return "", "", err
+	}
+	newExpiry:= time.Now().Add(s.refreshTokenDur).Unix()
 	if err := s.sessionRepo.RotateRefreshToken(ctx, sess.SessionID, newToken, newExpiry); err != nil {
 		return "", "", err
 	}
 	u, err := s.userRepo.Get(ctx, sess.UserID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return "", "", fmt.Errorf("user not found: %w", domain.ErrUnauthorized)
+		}
 		return "", "", err
 	}
 	bearer, err := s.jwtProvider.Sign(u.UserID, sess.DeviceID, u.Role, sess.SessionID)

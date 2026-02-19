@@ -71,7 +71,16 @@ func Load() *Config {
 		SMTPUsername: getEnv("SMTP_USERNAME", ""),
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
 		SNSRegion: getEnv("SNS_REGION", "us-east-1"),
-		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
+		AllowedOrigins: func() []string {
+			parts := strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ",")
+			result := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if t := strings.TrimSpace(p); t != "" {
+					result = append(result, t)
+				}
+			}
+			return result
+		}(),
 	}
 }
 

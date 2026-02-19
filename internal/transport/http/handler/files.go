@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	fileapp "github.com/go-api-nosql/internal/application/file"
@@ -86,7 +87,7 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rc.Close()
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+f.Name+"\"")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeHeaderFilename(f.Name)+"\"")
 	_, _ = io.Copy(w, rc)
 }
 
@@ -119,5 +120,13 @@ func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
 
 func (h *FileHandler) MethodNotAllowed(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusMethodNotAllowed, "method not allowed when id is provided")
+}
+
+// sanitizeHeaderFilename strips CR/LF characters and escapes double-quotes to
+// prevent HTTP header injection via the Content-Disposition filename parameter.
+func sanitizeHeaderFilename(name string) string {
+	name = strings.ReplaceAll(name, "\r", "")
+	name = strings.ReplaceAll(name, "\n", "")
+	return strings.ReplaceAll(name, "\"", "\\\"")
 }
 

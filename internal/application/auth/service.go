@@ -139,7 +139,10 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 	if err != nil {
 		return "", "", nil, err
 	}
-	refreshToken := pkgtoken.NewRefreshToken()
+	refreshToken, err := pkgtoken.NewRefreshToken()
+	if err != nil {
+		return "", "", nil, err
+	}
 	now := time.Now().UTC()
 	sess := &domain.Session{
 		SessionID:        id.New(),
