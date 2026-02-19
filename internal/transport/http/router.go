@@ -1,7 +1,9 @@
 package http
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -42,7 +44,7 @@ type Deps struct {
 }
 
 // NewRouter builds and returns the application router.
-func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
+func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(appmiddleware.RequestLogger)
 	r.Use(chimiddleware.Recoverer)
@@ -51,7 +53,7 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 		AllowedOrigins:   cfg.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-		AllowCredentials: false,
+		AllowCredentials: false, // Bearer token auth; cookies not used
 		MaxAge:           300,
 	}))
 
@@ -63,15 +65,16 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 	}
 
 	// 5 requests/second, burst of 10 — applied to sensitive public endpoints.
-	sensitiveRL := appmiddleware.NewRateLimiter(rate.Limit(5), 10)
+	sensitiveRL := appmiddleware.NewRateLimiter(ctx, rate.Limit(5), 10)
 
-	sessionSvc := session.NewService(deps.SessionRepo, deps.UserRepo, deps.DeviceRepo, deps.JWTProvider)
-	userSvc := user.NewService(deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.JWTProvider)
+	refreshDur := time.Duration(cfg.RefreshTokenExpiryDays) * 24 * time.Hour
+	sessionSvc := session.NewService(deps.SessionRepo, deps.UserRepo, deps.DeviceRepo, deps.JWTProvider, refreshDur)
+	userSvc := user.NewService(deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.JWTProvider, refreshDur)
 	statusSvc := status.NewService(deps.StatusRepo)
 	deviceSvc := device.NewService(deps.DeviceRepo, deps.AppVersionRepo)
 	notifSvc := notification.NewService(deps.NotificationRepo)
 	fileSvc := fileapp.NewService(deps.S3Store, deps.FileRepo)
-	authSvc := auth.NewService(deps.VerificationRepo, deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.Mailer, deps.SMSSender, deps.JWTProvider)
+	authSvc := auth.NewService(deps.VerificationRepo, deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.Mailer, deps.SMSSender, deps.JWTProvider, refreshDur)
 
 	healthH := handler.NewHealthHandler()
 	sessionH := handler.NewSessionHandler(sessionSvc)

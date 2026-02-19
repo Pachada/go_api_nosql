@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -14,7 +13,9 @@ import (
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
+	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
+	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -51,6 +52,7 @@ type service struct {
 	mailer           smtp.Mailer
 	smsSender        sns.SMSSender
 	jwtProvider      *jwtinfra.Provider
+	refreshTokenDur  time.Duration
 }
 
 func NewService(
@@ -61,6 +63,7 @@ func NewService(
 	mailer smtp.Mailer,
 	smsSender sns.SMSSender,
 	jwtProvider *jwtinfra.Provider,
+	refreshTokenDur time.Duration,
 ) Service {
 	return &service{
 		verificationRepo: verificationRepo,
@@ -70,6 +73,7 @@ func NewService(
 		mailer:           mailer,
 		smsSender:        smsSender,
 		jwtProvider:      jwtProvider,
+		refreshTokenDur:  refreshTokenDur,
 	}
 }
 
@@ -131,26 +135,26 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 		slog.Warn("failed to delete OTP verification record", "user_id", u.UserID, "err", err)
 	}
 
-	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
+	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
 	if err != nil {
 		return "", "", nil, err
 	}
-	refreshToken := newRefreshToken()
+	refreshToken := pkgtoken.NewRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
 		SessionID:        id.New(),
 		UserID:           u.UserID,
-		DeviceID:         device.DeviceID,
+		DeviceID:         dev.DeviceID,
 		Enable:           true,
 		RefreshToken:     refreshToken,
-		RefreshExpiresAt: now.Add(30 * 24 * time.Hour).Unix(),
+		RefreshExpiresAt: now.Add(s.refreshTokenDur).Unix(),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return "", "", nil, err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.Role, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, dev.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -202,31 +206,6 @@ func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) 
 		slog.Warn("failed to delete email verification record", "user_id", userID, "err", err)
 	}
 	return s.userRepo.Update(ctx, userID, map[string]interface{}{"email_confirmed": true})
-}
-
-func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID string) (*domain.Device, error) {
-	if deviceUUID != nil {
-		if d, err := s.deviceRepo.GetByUUID(ctx, *deviceUUID); err == nil {
-			return d, nil
-		}
-	}
-	devUUID := id.New()
-	if deviceUUID != nil {
-		devUUID = *deviceUUID
-	}
-	now := time.Now().UTC()
-	d := &domain.Device{
-		DeviceID:  id.New(),
-		UUID:      devUUID,
-		UserID:    userID,
-		Enable:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := s.deviceRepo.Put(ctx, d); err != nil {
-		return nil, err
-	}
-	return d, nil
 }
 
 func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) error {
@@ -284,8 +263,4 @@ func generateToken(n int) (string, error) {
 	return string(b), nil
 }
 
-func newRefreshToken() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
+

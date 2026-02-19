@@ -108,7 +108,7 @@ docker compose up -d     # fresh container — init-aws.sh runs automatically
 On fresh start, `init-aws.sh` automatically:
 - Creates all DynamoDB tables with their GSIs
 - Creates the S3 bucket
-- Seeds the default roles (`Admin` id=1, `User` id=2)
+
 
 ---
 
@@ -200,7 +200,7 @@ DynamoDB does **not** support modifying or deleting a GSI's key schema. You must
 | `AWS_SECRET_ACCESS_KEY` | *(empty)* | Use `test` for LocalStack |
 | `DYNAMO_TABLE_USERS` | `users` | DynamoDB table name |
 | `DYNAMO_TABLE_SESSIONS` | `sessions` | |
-| `DYNAMO_TABLE_ROLES` | `roles` | |
+
 | `DYNAMO_TABLE_STATUSES` | `statuses` | |
 | `DYNAMO_TABLE_DEVICES` | `devices` | |
 | `DYNAMO_TABLE_NOTIFICATIONS` | `notifications` | |
@@ -211,6 +211,7 @@ DynamoDB does **not** support modifying or deleting a GSI's key schema. You must
 | `JWT_PRIVATE_KEY_PATH` | `./private_key.pem` | RS256 private key |
 | `JWT_PUBLIC_KEY_PATH` | `./public_key.pem` | RS256 public key |
 | `JWT_EXPIRY_DAYS` | `7` | Access token lifetime in days |
+| `REFRESH_TOKEN_EXPIRY_DAYS` | `30` | Refresh token lifetime in days |
 | `SMTP_HOST` | `localhost` | |
 | `SMTP_PORT` | `1025` | |
 | `SMTP_FROM` | `noreply@example.com` | |

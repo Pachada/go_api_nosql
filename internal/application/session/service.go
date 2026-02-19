@@ -2,19 +2,19 @@ package session
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
+	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
+	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
-const refreshTokenDuration = 30 * 24 * time.Hour
+
 
 type LoginRequest struct {
 	Username   string  `json:"username" validate:"required"`
@@ -36,18 +36,20 @@ type Service interface {
 }
 
 type service struct {
-	sessionRepo *dynamo.SessionRepo
-	userRepo    *dynamo.UserRepo
-	deviceRepo  *dynamo.DeviceRepo
-	jwtProvider *jwtinfra.Provider
+	sessionRepo      *dynamo.SessionRepo
+	userRepo         *dynamo.UserRepo
+	deviceRepo       *dynamo.DeviceRepo
+	jwtProvider      *jwtinfra.Provider
+	refreshTokenDur  time.Duration
 }
 
-func NewService(sessionRepo *dynamo.SessionRepo, userRepo *dynamo.UserRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider) Service {
+func NewService(sessionRepo *dynamo.SessionRepo, userRepo *dynamo.UserRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider, refreshTokenDur time.Duration) Service {
 	return &service{
-		sessionRepo: sessionRepo,
-		userRepo:    userRepo,
-		deviceRepo:  deviceRepo,
-		jwtProvider: jwtProvider,
+		sessionRepo:     sessionRepo,
+		userRepo:        userRepo,
+		deviceRepo:      deviceRepo,
+		jwtProvider:     jwtProvider,
+		refreshTokenDur: refreshTokenDur,
 	}
 }
 
@@ -65,26 +67,26 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
 		return nil, fmt.Errorf("invalid credentials: %w", domain.ErrUnauthorized)
 	}
-	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
+	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
 	if err != nil {
 		return nil, err
 	}
-	refreshToken := newRefreshToken()
+	refreshToken := pkgtoken.NewRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
 		SessionID:        id.New(),
 		UserID:           u.UserID,
-		DeviceID:         device.DeviceID,
+		DeviceID:         dev.DeviceID,
 		Enable:           true,
 		RefreshToken:     refreshToken,
-		RefreshExpiresAt: now.Add(refreshTokenDuration).Unix(),
+		RefreshExpiresAt: now.Add(s.refreshTokenDur).Unix(),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return nil, err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.Role, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, dev.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +122,8 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	if sess.RefreshExpiresAt < time.Now().Unix() {
 		return "", "", fmt.Errorf("refresh token expired: %w", domain.ErrUnauthorized)
 	}
-	newToken := newRefreshToken()
-	newExpiry := time.Now().Add(refreshTokenDuration).Unix()
+	newToken := pkgtoken.NewRefreshToken()
+	newExpiry := time.Now().Add(s.refreshTokenDur).Unix()
 	if err := s.sessionRepo.RotateRefreshToken(ctx, sess.SessionID, newToken, newExpiry); err != nil {
 		return "", "", err
 	}
@@ -136,33 +138,3 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	return bearer, newToken, nil
 }
 
-func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID string) (*domain.Device, error) {
-	if deviceUUID != nil {
-		if d, err := s.deviceRepo.GetByUUID(ctx, *deviceUUID); err == nil {
-			return d, nil
-		}
-	}
-	devUUID := id.New()
-	if deviceUUID != nil {
-		devUUID = *deviceUUID
-	}
-	now := time.Now().UTC()
-	d := &domain.Device{
-		DeviceID:  id.New(),
-		UUID:      devUUID,
-		UserID:    userID,
-		Enable:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := s.deviceRepo.Put(ctx, d); err != nil {
-		return nil, err
-	}
-	return d, nil
-}
-
-func newRefreshToken() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}

@@ -69,7 +69,7 @@ func main() {
 		JWTProvider:      jwtProvider,
 	}
 
-	router := transporthttp.NewRouter(cfg, deps)
+	router := transporthttp.NewRouter(context.Background(), cfg, deps)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.AppPort),

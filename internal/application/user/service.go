@@ -2,15 +2,15 @@ package user
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
+	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
+	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,14 +24,15 @@ type Service interface {
 }
 
 type service struct {
-	repo        *dynamo.UserRepo
-	sessionRepo *dynamo.SessionRepo
-	deviceRepo  *dynamo.DeviceRepo
-	jwtProvider *jwtinfra.Provider
+	repo            *dynamo.UserRepo
+	sessionRepo     *dynamo.SessionRepo
+	deviceRepo      *dynamo.DeviceRepo
+	jwtProvider     *jwtinfra.Provider
+	refreshTokenDur time.Duration
 }
 
-func NewService(repo *dynamo.UserRepo, sessionRepo *dynamo.SessionRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider) Service {
-	return &service{repo: repo, sessionRepo: sessionRepo, deviceRepo: deviceRepo, jwtProvider: jwtProvider}
+func NewService(repo *dynamo.UserRepo, sessionRepo *dynamo.SessionRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider, refreshTokenDur time.Duration) Service {
+	return &service{repo: repo, sessionRepo: sessionRepo, deviceRepo: deviceRepo, jwtProvider: jwtProvider, refreshTokenDur: refreshTokenDur}
 }
 
 func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error) {
@@ -81,26 +82,26 @@ func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUser
 	if err != nil {
 		return nil, "", "", err
 	}
-	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
+	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
 	if err != nil {
 		return nil, "", "", err
 	}
-	refreshToken := newRefreshToken()
+	refreshToken := pkgtoken.NewRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
 		SessionID:        id.New(),
 		UserID:           u.UserID,
-		DeviceID:         device.DeviceID,
+		DeviceID:         dev.DeviceID,
 		Enable:           true,
 		RefreshToken:     refreshToken,
-		RefreshExpiresAt: now.Add(30 * 24 * time.Hour).Unix(),
+		RefreshExpiresAt: now.Add(s.refreshTokenDur).Unix(),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return nil, "", "", err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.Role, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, dev.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -164,34 +165,5 @@ func (s *service) Delete(ctx context.Context, userID string) error {
 	}
 	return s.sessionRepo.SoftDeleteByUser(ctx, userID)
 }
+
 
-func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID string) (*domain.Device, error) {
-	if deviceUUID != nil {
-		if d, err := s.deviceRepo.GetByUUID(ctx, *deviceUUID); err == nil {
-			return d, nil
-		}
-	}
-	devUUID := id.New()
-	if deviceUUID != nil {
-		devUUID = *deviceUUID
-	}
-	now := time.Now().UTC()
-	d := &domain.Device{
-		DeviceID:  id.New(),
-		UUID:      devUUID,
-		UserID:    userID,
-		Enable:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := s.deviceRepo.Put(ctx, d); err != nil {
-		return nil, err
-	}
-	return d, nil
-}
-
-func newRefreshToken() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}

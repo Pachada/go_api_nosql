@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
@@ -24,13 +25,15 @@ type RateLimiter struct {
 }
 
 // NewRateLimiter creates a per-IP limiter: r requests/second, burst up to burst requests.
-func NewRateLimiter(r rate.Limit, burst int) *RateLimiter {
+// The provided context controls the lifetime of the background cleanup goroutine;
+// cancel it (e.g. on server shutdown) to stop the goroutine and avoid leaks.
+func NewRateLimiter(ctx context.Context, r rate.Limit, burst int) *RateLimiter {
 	rl := &RateLimiter{
 		limiters: make(map[string]*ipLimiter),
 		r:        r,
 		burst:    burst,
 	}
-	go rl.cleanup()
+	go rl.cleanup(ctx)
 	return rl
 }
 
@@ -46,17 +49,21 @@ func (rl *RateLimiter) get(ip string) *rate.Limiter {
 	return l
 }
 
-// cleanup removes stale entries every 5 minutes.
-func (rl *RateLimiter) cleanup() {
+// cleanup removes stale entries every 5 minutes until ctx is cancelled.
+func (rl *RateLimiter) cleanup(ctx context.Context) {
 	for {
-		time.Sleep(5 * time.Minute)
-		rl.mu.Lock()
-		for ip, v := range rl.limiters {
-			if time.Since(v.lastSeen) > 10*time.Minute {
-				delete(rl.limiters, ip)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Minute):
+			rl.mu.Lock()
+			for ip, v := range rl.limiters {
+				if time.Since(v.lastSeen) > 10*time.Minute {
+					delete(rl.limiters, ip)
+				}
 			}
+			rl.mu.Unlock()
 		}
-		rl.mu.Unlock()
 	}
 }
 
@@ -80,6 +87,11 @@ func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 
 // realIP extracts the originating client IP from X-Forwarded-For (first entry),
 // X-Real-Ip, or falls back to the TCP remote address.
+//
+// SECURITY NOTE: X-Forwarded-For can be spoofed by clients if the API is
+// reached directly without a trusted proxy. This limiter should be treated as
+// a secondary defence. Configure rate limits at the API Gateway / WAF level
+// as the primary layer so that untrusted headers never reach this code.
 func realIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		// X-Forwarded-For can be a comma-separated list: client, proxy1, proxy2

@@ -46,6 +46,10 @@ func NewService(s3 *s3infra.Store, fileRepo *dynamo.FileRepo) Service {
 }
 
 func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, error) {
+	// NOTE: callers are responsible for enforcing a maximum file size before
+	// invoking Upload. io.TeeReader streams through the SHA-256 hasher, so
+	// the full content is read into memory by the S3 upload; large files will
+	// increase memory pressure proportionally.
 	safeName := sanitizeFilename(input.Filename)
 	key := fmt.Sprintf("files/%s/%s", input.UploaderID, safeName)
 	hasher := sha256.New()
@@ -75,6 +79,9 @@ func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, 
 }
 
 func (s *service) UploadBase64(ctx context.Context, filename, base64Data string, uploaderID string) (*domain.File, error) {
+	// NOTE: base64 decoding materialises the full payload in memory. Callers
+	// should enforce a maximum payload size (e.g. via http.MaxBytesReader)
+	// before invoking UploadBase64 to prevent excessive memory usage.
 	safeName := sanitizeFilename(filename)
 	key := fmt.Sprintf("files/%s/%s", uploaderID, safeName)
 	decoded, err := base64.StdEncoding.DecodeString(base64Data)
@@ -178,6 +185,8 @@ func contentTypeFromName(filename string) string {
 
 // sanitizeFilename strips directory components and keeps only safe characters
 // (alphanumeric, dot, dash, underscore) to prevent path traversal in S3 keys.
+// When the result would be empty or generic, a nanosecond timestamp suffix is
+// appended to avoid S3 key collisions.
 func sanitizeFilename(name string) string {
 	name = path.Base(name) // drop any leading path components / traversal sequences
 	var b strings.Builder
@@ -192,5 +201,5 @@ func sanitizeFilename(name string) string {
 	if result := b.String(); result != "" && result != "." {
 		return result
 	}
-	return "_"
+	return fmt.Sprintf("_%d", time.Now().UnixNano())
 }

@@ -51,6 +51,9 @@ func (r *UserRepo) Get(ctx context.Context, userID string) (*domain.User, error)
 	if err := attributevalue.UnmarshalMap(out.Item, &u); err != nil {
 		return nil, err
 	}
+	if u.DeletedAt != nil {
+		return nil, errors.New("user not found")
+	}
 	return &u, nil
 }
 
@@ -131,7 +134,7 @@ func encodeCursor(userID string) string {
 func decodeCursor(cursor string) (string, error) {
 	b, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return "", err
+		return "", domain.ErrBadRequest
 	}
 	return string(b), nil
 }

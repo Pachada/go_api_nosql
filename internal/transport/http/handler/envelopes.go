@@ -125,7 +125,7 @@ type SessionEnvelope struct {
 // CursorUsersEnvelope wraps cursor-paginated user list responses.
 type CursorUsersEnvelope struct {
 	Data       []*SafeUser `json:"data"`
-	Count      int         `json:"count"`
+	Returned   int         `json:"returned"`
 	NextCursor string      `json:"next_cursor,omitempty"`
 	Error      string      `json:"error,omitempty"`
 }

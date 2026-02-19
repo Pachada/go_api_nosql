@@ -117,7 +117,7 @@ paths:
       summary: List users (admin only)
       description: |
         Cursor-based pagination. Pass `next_cursor` from a previous response as `cursor` to get the next page.
-        Note: `count` may be less than `limit` when filtered items are skipped by DynamoDB.
+        Note: `returned` may be less than `limit` when filtered items are skipped by DynamoDB.
       security:
         - bearerAuth: []
       parameters:
@@ -465,18 +465,6 @@ paths:
           description: Notifications list
 
   /v1/notifications/{id}:
-    get:
-      tags: [Notifications]
-      summary: Get notification by id
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/Id'
-      responses:
-        '200':
-          description: Notification detail
-        '404':
-          $ref: '#/components/responses/NotFound'
     put:
       tags: [Notifications]
       summary: Mark notification as read
@@ -567,14 +555,6 @@ paths:
       responses:
         '201':
           description: File uploaded
-    get:
-      tags: [Files S3]
-      summary: Not implemented
-      security:
-        - bearerAuth: []
-      responses:
-        '501':
-          description: Not implemented
 
   /v1/files/s3/base64/{id}:
     get:
@@ -723,7 +703,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
-        count:
+        returned:
           type: integer
           description: Number of items returned in this page
         next_cursor:
@@ -767,8 +747,9 @@ components:
         birthday:
           type: string
           format: date
-          description: "Date in YYYY-MM-DD format"
+          description: "Optional. Date in YYYY-MM-DD format"
           example: "1998-01-10"
+          nullable: true
         device_uuid:
           type: string
 
@@ -792,9 +773,11 @@ components:
           format: date
           description: "Date in YYYY-MM-DD format"
           example: "1998-01-10"
+          nullable: true
         role:
           type: string
           enum: [Admin, User]
+          description: "Admin only. Available roles: Admin, User"
         enable:
           type: boolean
 
@@ -818,6 +801,7 @@ components:
           format: email
         device_uuid:
           type: string
+          description: "Optional. Device UUID to associate the session with"
 
     ChangePasswordRequest:
       type: object
@@ -876,7 +860,7 @@ components:
         role:
           type: string
           enum: [Admin, User]
-        first_name:
+          description: "Available roles: Admin, User"
           type: string
         last_name:
           type: string

@@ -19,6 +19,7 @@ type Config struct {
 	JWTPrivateKeyPath string
 	JWTPublicKeyPath  string
 	JWTExpiryDays    int
+	RefreshTokenExpiryDays int
 	SMTPHost     string
 	SMTPPort     string
 	SMTPFrom     string
@@ -62,7 +63,8 @@ func Load() *Config {
 		S3BucketName:      getEnv("S3_BUCKET_NAME", "go-api-files"),
 		JWTPrivateKeyPath: getEnv("JWT_PRIVATE_KEY_PATH", "./private_key.pem"),
 		JWTPublicKeyPath:  getEnv("JWT_PUBLIC_KEY_PATH", "./public_key.pem"),
-		JWTExpiryDays:     getEnvInt("JWT_EXPIRY_DAYS", 7),
+		JWTExpiryDays:          getEnvInt("JWT_EXPIRY_DAYS", 7),
+		RefreshTokenExpiryDays: getEnvInt("REFRESH_TOKEN_EXPIRY_DAYS", 30),
 		SMTPHost:     getEnv("SMTP_HOST", "localhost"),
 		SMTPPort:     getEnv("SMTP_PORT", "1025"),
 		SMTPFrom:     getEnv("SMTP_FROM", "noreply@example.com"),

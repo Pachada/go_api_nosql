@@ -92,19 +92,15 @@ func (r *SessionRepo) Update(ctx context.Context, sessionID string, updates map[
 	return err
 }
 
-// GetByRefreshToken looks up an active session by its opaque refresh token via GSI.
+// GetByRefreshToken looks up a session by its opaque refresh token via GSI.
+// Returns ErrUnauthorized (session disabled) when found but inactive.
 func (r *SessionRepo) GetByRefreshToken(ctx context.Context, token string) (*domain.Session, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		IndexName:              aws.String("refresh_token-index"),
 		KeyConditionExpression: aws.String("refresh_token = :rt"),
-		FilterExpression:       aws.String("#en = :true"),
-		ExpressionAttributeNames: map[string]string{
-			"#en": "enable",
-		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":rt":   &types.AttributeValueMemberS{Value: token},
-			":true": &types.AttributeValueMemberBOOL{Value: true},
+			":rt": &types.AttributeValueMemberS{Value: token},
 		},
 	})
 	if err != nil {
@@ -116,6 +112,9 @@ func (r *SessionRepo) GetByRefreshToken(ctx context.Context, token string) (*dom
 	var s domain.Session
 	if err := attributevalue.UnmarshalMap(out.Items[0], &s); err != nil {
 		return nil, err
+	}
+	if !s.Enable {
+		return nil, fmt.Errorf("session disabled: %w", domain.ErrUnauthorized)
 	}
 	return &s, nil
 }

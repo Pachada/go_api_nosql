@@ -55,7 +55,7 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, CursorUsersEnvelope{
 		Data:       safe,
-		Count:      len(safe),
+		Returned:   len(safe),
 		NextCursor: nextCursor,
 	})
 }
@@ -99,8 +99,10 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if claims.Role != domain.RoleAdmin {
-		req.Role = nil
-		req.Enable = nil
+		if req.Role != nil || req.Enable != nil {
+			writeError(w, http.StatusForbidden, "cannot set role or enable as non-admin")
+			return
+		}
 	}
 	u, err := h.svc.Update(r.Context(), targetID, req)
 	if err != nil {
