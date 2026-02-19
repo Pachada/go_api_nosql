@@ -204,6 +204,8 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [Users]
       summary: Delete user by id (soft delete, admin only)
@@ -294,6 +296,34 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/confirm-phone/{action}:
+    post:
+      tags: [Phone Confirmation]
+      summary: Phone confirmation flow action
+      description: |
+        - **action=request**: Send confirmation OTP via SMS
+        - **action=validate-code**: Validate OTP. Body: `{ "otp": "..." }`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConfirmPhoneAction'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                otp:
+                  type: string
+      responses:
+        '200':
+          description: Action result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/roles:
     get:
       tags: [Roles]
@@ -319,6 +349,12 @@ paths:
       responses:
         '200':
           description: Status list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Status'
     post:
       tags: [Statuses]
       summary: Create status (admin only)
@@ -333,6 +369,10 @@ paths:
       responses:
         '201':
           description: Status created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -347,6 +387,10 @@ paths:
       responses:
         '200':
           description: Status detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
         '404':
           $ref: '#/components/responses/NotFound'
     put:
@@ -365,6 +409,10 @@ paths:
       responses:
         '200':
           description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
         '403':
           $ref: '#/components/responses/Forbidden'
     delete:
@@ -389,6 +437,12 @@ paths:
       responses:
         '200':
           description: Devices list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
 
   /v1/devices/{id}:
     get:
@@ -401,6 +455,12 @@ paths:
       responses:
         '200':
           description: Device detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
     put:
@@ -415,11 +475,16 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/UpdateDeviceRequest'
       responses:
         '200':
           description: Device updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [Devices]
       summary: Delete device
@@ -430,6 +495,8 @@ paths:
       responses:
         '200':
           description: Device deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   /v1/devices/version:
     put:
@@ -463,6 +530,12 @@ paths:
       responses:
         '200':
           description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
 
   /v1/notifications/{id}:
     put:
@@ -475,6 +548,10 @@ paths:
       responses:
         '200':
           description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
 
   /v1/files/s3:
     post:
@@ -507,6 +584,10 @@ paths:
       responses:
         '201':
           description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
 
   /v1/files/s3/{id}:
     get:
@@ -555,6 +636,10 @@ paths:
       responses:
         '201':
           description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/File'
 
   /v1/files/s3/base64/{id}:
     get:
@@ -611,6 +696,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/MessageEnvelope'
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
 
   parameters:
     Id:
@@ -650,6 +741,13 @@ components:
         type: string
         enum: [request, validate-code]
     ConfirmEmailAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [request, validate-code]
+    ConfirmPhoneAction:
       name: action
       in: path
       required: true
@@ -825,6 +923,47 @@ components:
         description:
           type: string
 
+    Status:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        device_id:
+          type: string
+          nullable: true
+        template_id:
+          type: string
+          nullable: true
+        message:
+          type: string
+        readed:
+          type: integer
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+
+    UpdateDeviceRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          nullable: true
+        app_version_id:
+          type: string
+
     Session:
       type: object
       properties:
@@ -896,6 +1035,8 @@ components:
         token:
           type: string
           nullable: true
+        app_version_id:
+          type: string
         created:
           type: string
           format: date-time
@@ -921,12 +1062,14 @@ components:
         hash:
           type: string
         is_thumbnail:
-          type: boolean
+          type: integer
+          description: "1 if thumbnail, 0 otherwise"
         url:
           type: string
+          nullable: true
         is_private:
           type: boolean
-        uploaded_by_user_id:
+        user_who_uploaded_id:
           type: string
         created:
           type: string
