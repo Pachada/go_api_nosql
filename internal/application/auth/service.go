@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -38,6 +39,8 @@ type Service interface {
 	ChangePassword(ctx context.Context, userID, newPassword string) error
 	RequestEmailConfirmation(ctx context.Context, userID string) error
 	ValidateEmailToken(ctx context.Context, userID, token string) error
+	RequestPhoneConfirmation(ctx context.Context, userID string) error
+	ValidatePhoneOTP(ctx context.Context, userID, otp string) error
 }
 
 type service struct {
@@ -124,7 +127,9 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 	if v.ExpiresAt < time.Now().Unix() {
 		return "", "", nil, fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
 	}
-	_ = s.verificationRepo.Delete(ctx, u.UserID, "otp")
+	if err := s.verificationRepo.Delete(ctx, u.UserID, "otp"); err != nil {
+		slog.Warn("failed to delete OTP verification record", "user_id", u.UserID, "err", err)
+	}
 
 	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
 	if err != nil {
@@ -193,7 +198,9 @@ func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) 
 	if v.ExpiresAt < time.Now().Unix() {
 		return fmt.Errorf("token expired: %w", domain.ErrUnauthorized)
 	}
-	_ = s.verificationRepo.Delete(ctx, userID, "email")
+	if err := s.verificationRepo.Delete(ctx, userID, "email"); err != nil {
+		slog.Warn("failed to delete email verification record", "user_id", userID, "err", err)
+	}
 	return s.userRepo.Update(ctx, userID, map[string]interface{}{"email_confirmed": true})
 }
 
@@ -220,6 +227,48 @@ func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID 
 		return nil, err
 	}
 	return d, nil
+}
+
+func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) error {
+	u, err := s.userRepo.Get(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", domain.ErrNotFound)
+	}
+	if u.Phone == nil {
+		return fmt.Errorf("no phone number on account: %w", domain.ErrBadRequest)
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(999999))
+	if err != nil {
+		return err
+	}
+	otp := fmt.Sprintf("%06d", n.Int64())
+	v := &domain.UserVerification{
+		UserID:    userID,
+		Type:      "phone",
+		Code:      otp,
+		ExpiresAt: time.Now().Add(15 * time.Minute).Unix(),
+	}
+	if err := s.verificationRepo.Put(ctx, v); err != nil {
+		return err
+	}
+	return s.smsSender.SendSMS(*u.Phone, "Your verification code: "+otp)
+}
+
+func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) error {
+	v, err := s.verificationRepo.Get(ctx, userID, "phone")
+	if err != nil {
+		return fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
+	}
+	if v.Code != otp {
+		return fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
+	}
+	if v.ExpiresAt < time.Now().Unix() {
+		return fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
+	}
+	if err := s.verificationRepo.Delete(ctx, userID, "phone"); err != nil {
+		slog.Warn("failed to delete phone verification record", "user_id", userID, "err", err)
+	}
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{"phone_confirmed": true})
 }
 
 func generateToken(n int) (string, error) {

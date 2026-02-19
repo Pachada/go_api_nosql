@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	fileapp "github.com/go-api-nosql/internal/application/file"
+	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
@@ -78,13 +79,14 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	rc, _, err := h.svc.Download(r.Context(), chi.URLParam(r, "id"), claims.UserID, false)
+	rc, f, err := h.svc.Download(r.Context(), chi.URLParam(r, "id"), claims.UserID, claims.Role == domain.RoleAdmin)
 	if err != nil {
 		httpError(w, err)
 		return
 	}
 	defer rc.Close()
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+f.Name+"\"")
 	_, _ = io.Copy(w, rc)
 }
 
@@ -94,15 +96,11 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id"), claims.UserID, false); err != nil {
+	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id"), claims.UserID, claims.Role == domain.RoleAdmin); err != nil {
 		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "file deleted"})
-}
-
-func (h *FileHandler) ListBase64(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotImplemented, "not implemented")
 }
 
 func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +109,7 @@ func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	f, b64, err := h.svc.GetBase64(r.Context(), chi.URLParam(r, "id"), claims.UserID, false)
+	f, b64, err := h.svc.GetBase64(r.Context(), chi.URLParam(r, "id"), claims.UserID, claims.Role == domain.RoleAdmin)
 	if err != nil {
 		httpError(w, err)
 		return

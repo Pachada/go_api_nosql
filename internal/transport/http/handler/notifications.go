@@ -31,22 +31,13 @@ func (h *NotificationHandler) ListUnread(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, notifications)
 }
 
-func (h *NotificationHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	n, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"), claims.UserID)
-	if err != nil {
-		httpError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, n)
-}
-
-func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
-	n, err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id"))
+	n, err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id"), claims.UserID)
 	if err != nil {
 		httpError(w, err)
 		return

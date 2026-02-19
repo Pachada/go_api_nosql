@@ -2,6 +2,11 @@ package domain
 
 import "time"
 
+type UpdateDeviceRequest struct {
+	Token        *string `json:"token"`
+	AppVersionID *string `json:"app_version_id"`
+}
+
 type Device struct {
 	DeviceID     string    `json:"id" dynamodbav:"device_id"`
 	UUID         string    `json:"uuid" dynamodbav:"device_uuid"`

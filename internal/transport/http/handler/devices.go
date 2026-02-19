@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/device"
+	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
@@ -31,21 +32,45 @@ func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DeviceHandler) Get(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	d, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		httpError(w, err)
+		return
+	}
+	if d.UserID != claims.UserID && claims.Role != domain.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	writeJSON(w, http.StatusOK, d)
 }
 
 func (h *DeviceHandler) Update(w http.ResponseWriter, r *http.Request) {
-	var fields map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&fields); err != nil {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	deviceID := chi.URLParam(r, "id")
+	d, err := h.svc.Get(r.Context(), deviceID)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	if d.UserID != claims.UserID && claims.Role != domain.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	var req domain.UpdateDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	updated, err := h.svc.Update(r.Context(), chi.URLParam(r, "id"), fields)
+	updated, err := h.svc.Update(r.Context(), deviceID, req)
 	if err != nil {
 		httpError(w, err)
 		return
@@ -54,7 +79,22 @@ func (h *DeviceHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DeviceHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	deviceID := chi.URLParam(r, "id")
+	d, err := h.svc.Get(r.Context(), deviceID)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	if d.UserID != claims.UserID && claims.Role != domain.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if err := h.svc.Delete(r.Context(), deviceID); err != nil {
 		httpError(w, err)
 		return
 	}

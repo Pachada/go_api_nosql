@@ -11,7 +11,7 @@ import (
 type Service interface {
 	List(ctx context.Context, userID string) ([]domain.Device, error)
 	Get(ctx context.Context, deviceID string) (*domain.Device, error)
-	Update(ctx context.Context, deviceID string, fields map[string]interface{}) (*domain.Device, error)
+	Update(ctx context.Context, deviceID string, req domain.UpdateDeviceRequest) (*domain.Device, error)
 	Delete(ctx context.Context, deviceID string) error
 	// CheckVersion returns true if version is up to date, false if update required.
 	CheckVersion(ctx context.Context, sessionID string, version float64) (bool, error)
@@ -34,8 +34,18 @@ func (s *service) Get(ctx context.Context, deviceID string) (*domain.Device, err
 	return s.repo.Get(ctx, deviceID)
 }
 
-func (s *service) Update(ctx context.Context, deviceID string, fields map[string]interface{}) (*domain.Device, error) {
-	if err := s.repo.Update(ctx, deviceID, fields); err != nil {
+func (s *service) Update(ctx context.Context, deviceID string, req domain.UpdateDeviceRequest) (*domain.Device, error) {
+	updates := map[string]interface{}{}
+	if req.Token != nil {
+		updates["token"] = *req.Token
+	}
+	if req.AppVersionID != nil {
+		updates["app_version_id"] = *req.AppVersionID
+	}
+	if len(updates) == 0 {
+		return s.repo.Get(ctx, deviceID)
+	}
+	if err := s.repo.Update(ctx, deviceID, updates); err != nil {
 		return nil, err
 	}
 	return s.repo.Get(ctx, deviceID)

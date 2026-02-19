@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,14 +60,41 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// Limit is the middleware handler that enforces the rate limit per remote IP.
+// Limit is the middleware handler that enforces the rate limit per client IP.
+// It reads the real client IP from X-Forwarded-For (set by API Gateway / proxies)
+// and falls back to RemoteAddr for direct connections.
+//
+// NOTE: for Lambda + API Gateway deployments this in-process limiter is a
+// secondary defence only — its state is lost on cold starts. Configure
+// API Gateway throttling and/or WAF rate-based rules as the primary layer.
 func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
+		ip := realIP(r)
 		if !rl.get(ip).Allow() {
 			http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// realIP extracts the originating client IP from X-Forwarded-For (first entry),
+// X-Real-Ip, or falls back to the TCP remote address.
+func realIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For can be a comma-separated list: client, proxy1, proxy2
+		// The leftmost entry is the original client IP.
+		if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
+			return ip
+		}
+	}
+	if xri := r.Header.Get("X-Real-Ip"); xri != "" {
+		return xri
+	}
+	// Strip port from RemoteAddr for consistency.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

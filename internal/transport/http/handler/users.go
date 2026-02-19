@@ -61,12 +61,21 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	u, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		httpError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toSafeUser(u))
+	if claims.UserID == u.UserID || claims.Role == domain.RoleAdmin {
+		writeJSON(w, http.StatusOK, toSafeUser(u))
+		return
+	}
+	writeJSON(w, http.StatusOK, toPublicUser(u))
 }
 
 func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +93,14 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if claims.Role != domain.RoleAdmin {
+		req.Role = nil
+		req.Enable = nil
 	}
 	u, err := h.svc.Update(r.Context(), targetID, req)
 	if err != nil {

@@ -9,7 +9,7 @@ import (
 	"github.com/go-api-nosql/internal/domain"
 )
 
-// SafeUser is the public-facing user DTO that omits sensitive fields like PasswordHash.
+// SafeUser is the full user DTO returned to the owner or an admin.
 type SafeUser struct {
 	UserID         string    `json:"id"`
 	Username       string    `json:"username"`
@@ -25,6 +25,14 @@ type SafeUser struct {
 	Enable         bool      `json:"enable"`
 	CreatedAt      time.Time `json:"created"`
 	UpdatedAt      time.Time `json:"updated"`
+}
+
+// PublicUser is the reduced user DTO returned to other authenticated users.
+type PublicUser struct {
+	UserID    string `json:"id"`
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
 }
 
 // SafeSession is the public-facing session DTO that omits RefreshToken, RefreshExpiresAt, and User.
@@ -56,6 +64,18 @@ func toSafeUser(u *domain.User) *SafeUser {
 		Enable:         u.Enable,
 		CreatedAt:      u.CreatedAt,
 		UpdatedAt:      u.UpdatedAt,
+	}
+}
+
+func toPublicUser(u *domain.User) *PublicUser {
+	if u == nil {
+		return nil
+	}
+	return &PublicUser{
+		UserID:    u.UserID,
+		Username:  u.Username,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
 	}
 }
 

@@ -1,10 +1,14 @@
 package file
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"time"
 
@@ -42,8 +46,11 @@ func NewService(s3 *s3infra.Store, fileRepo *dynamo.FileRepo) Service {
 }
 
 func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, error) {
-	key := fmt.Sprintf("files/%s/%s", input.UploaderID, input.Filename)
-	if _, err := s.s3.Upload(ctx, key, input.Reader, input.ContentType); err != nil {
+	safeName := sanitizeFilename(input.Filename)
+	key := fmt.Sprintf("files/%s/%s", input.UploaderID, safeName)
+	hasher := sha256.New()
+	tee := io.TeeReader(input.Reader, hasher)
+	if _, err := s.s3.Upload(ctx, key, tee, input.ContentType); err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
@@ -52,8 +59,8 @@ func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, 
 		Object:           key,
 		Size:             input.Size,
 		Type:             input.ContentType,
-		Name:             input.Filename,
-		Hash:             "",
+		Name:             safeName,
+		Hash:             hex.EncodeToString(hasher.Sum(nil)),
 		IsThumbnail:      btoi(input.IsThumbnail),
 		IsPrivate:        input.IsPrivate,
 		UploadedByUserID: input.UploaderID,
@@ -68,18 +75,25 @@ func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, 
 }
 
 func (s *service) UploadBase64(ctx context.Context, filename, base64Data string, uploaderID string) (*domain.File, error) {
-	key := fmt.Sprintf("files/%s/%s", uploaderID, filename)
-	if _, err := s.s3.UploadBase64(ctx, key, base64Data); err != nil {
+	safeName := sanitizeFilename(filename)
+	key := fmt.Sprintf("files/%s/%s", uploaderID, safeName)
+	decoded, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64: %w", domain.ErrBadRequest)
+	}
+	contentType := contentTypeFromName(safeName)
+	if _, err := s.s3.Upload(ctx, key, bytes.NewReader(decoded), contentType); err != nil {
 		return nil, err
 	}
+	sum := sha256.Sum256(decoded)
 	now := time.Now().UTC()
 	f := &domain.File{
 		FileID:           id.New(),
 		Object:           key,
-		Size:             0,
-		Type:             contentTypeFromName(filename),
-		Name:             filename,
-		Hash:             "",
+		Size:             int64(len(decoded)),
+		Type:             contentType,
+		Name:             safeName,
+		Hash:             hex.EncodeToString(sum[:]),
 		IsThumbnail:      0,
 		IsPrivate:        false,
 		UploadedByUserID: uploaderID,
@@ -160,4 +174,23 @@ func contentTypeFromName(filename string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// sanitizeFilename strips directory components and keeps only safe characters
+// (alphanumeric, dot, dash, underscore) to prevent path traversal in S3 keys.
+func sanitizeFilename(name string) string {
+	name = path.Base(name) // drop any leading path components / traversal sequences
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	if result := b.String(); result != "" && result != "." {
+		return result
+	}
+	return "_"
 }

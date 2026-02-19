@@ -82,6 +82,7 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 	fileH := handler.NewFileHandler(fileSvc)
 	pwH := handler.NewPasswordRecoveryHandler(authSvc)
 	emailH := handler.NewEmailConfirmHandler(authSvc)
+	phoneH := handler.NewPhoneConfirmHandler(authSvc)
 
 	r.Route("/v1", func(r chi.Router) {
 		// ── Public routes (no auth) ──────────────────────────────────────────
@@ -113,10 +114,8 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 			r.Put("/devices/{id}", deviceH.Update)
 			r.Delete("/devices/{id}", deviceH.Delete)
 			r.Get("/notifications", notifH.ListUnread)
-			r.Get("/notifications/{id}", notifH.Get)
 			r.Put("/notifications/{id}", notifH.MarkAsRead)
 			r.Post("/files/s3", fileH.Upload)
-			r.Get("/files/s3/base64", fileH.ListBase64)
 			r.Post("/files/s3/base64", fileH.UploadBase64)
 			r.Get("/files/s3/base64/{id}", fileH.GetBase64)
 			r.Post("/files/s3/base64/{id}", fileH.MethodNotAllowed)
@@ -124,6 +123,7 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 			r.Delete("/files/s3/{id}", fileH.Delete)
 			r.Post("/password-recovery/change-password", pwH.ChangePassword)
 			r.Post("/confirm-email/{action}", emailH.Action)
+			r.Post("/confirm-phone/{action}", phoneH.Action)
 
 			// Admin-only routes
 			r.Group(func(r chi.Router) {
