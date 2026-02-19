@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -57,12 +58,10 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 		MaxAge:           300,
 	}))
 
-	var authMw func(http.Handler) http.Handler
-	if deps.JWTProvider != nil {
-		authMw = appmiddleware.Auth(deps.JWTProvider)
-	} else {
-		authMw = func(next http.Handler) http.Handler { return next }
+	if deps.JWTProvider == nil {
+		log.Fatal("JWT provider is required but was not initialized; check RSA key files")
 	}
+	authMw := appmiddleware.Auth(deps.JWTProvider)
 
 	// 5 requests/second, burst of 10 — applied to sensitive public endpoints.
 	sensitiveRL := appmiddleware.NewRateLimiter(ctx, rate.Limit(5), 10)
@@ -122,8 +121,8 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			r.Get("/files/s3/{id}", fileH.Download)
 			r.Delete("/files/s3/{id}", fileH.Delete)
 			r.Post("/password-recovery/change-password", pwH.ChangePassword)
-			r.Post("/confirm-email/{action}", emailH.Action)
-			r.Post("/confirm-phone/{action}", phoneH.Action)
+			r.With(sensitiveRL.Limit).Post("/confirm-email/{action}", emailH.Action)
+			r.With(sensitiveRL.Limit).Post("/confirm-phone/{action}", phoneH.Action)
 
 			// Admin-only routes
 			r.Group(func(r chi.Router) {

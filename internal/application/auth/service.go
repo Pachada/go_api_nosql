@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -91,11 +92,10 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return fmt.Errorf("email or phone_number required: %w", domain.ErrBadRequest)
 	}
 
-	n, err := rand.Int(rand.Reader, big.NewInt(999999))
+	otp, err := generateOTP()
 	if err != nil {
 		return err
 	}
-	otp := fmt.Sprintf("%06d", n.Int64())
 
 	v := &domain.UserVerification{
 		UserID:    u.UserID,
@@ -125,7 +125,7 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 	if err != nil {
 		return "", "", nil, fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
 	}
-	if v.Code != req.OTP {
+	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(req.OTP)) != 1 {
 		return "", "", nil, fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
@@ -199,7 +199,7 @@ func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) 
 	if err != nil {
 		return fmt.Errorf("token not found: %w", domain.ErrNotFound)
 	}
-	if v.Code != token {
+	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(token)) != 1 {
 		return fmt.Errorf("invalid token: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
@@ -219,11 +219,10 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if u.Phone == nil {
 		return fmt.Errorf("no phone number on account: %w", domain.ErrBadRequest)
 	}
-	n, err := rand.Int(rand.Reader, big.NewInt(999999))
+	otp, err := generateOTP()
 	if err != nil {
 		return err
 	}
-	otp := fmt.Sprintf("%06d", n.Int64())
 	v := &domain.UserVerification{
 		UserID:    userID,
 		Type:      "phone",
@@ -241,7 +240,7 @@ func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) erro
 	if err != nil {
 		return fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
 	}
-	if v.Code != otp {
+	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(otp)) != 1 {
 		return fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
@@ -251,6 +250,21 @@ func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) erro
 		slog.Warn("failed to delete phone verification record", "user_id", userID, "err", err)
 	}
 	return s.userRepo.Update(ctx, userID, map[string]interface{}{"phone_confirmed": true})
+}
+
+// generateOTP returns a 6-character cryptographically random uppercase alphanumeric code,
+// excluding visually ambiguous characters (0, 1, I, L, O) for easier manual entry.
+func generateOTP() (string, error) {
+	const chars = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+	b := make([]byte, 6)
+	for i := range b {
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = chars[idx.Int64()]
+	}
+	return string(b), nil
 }
 
 func generateToken(n int) (string, error) {
