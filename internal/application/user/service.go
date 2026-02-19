@@ -2,6 +2,8 @@ package user
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -14,7 +16,7 @@ import (
 
 type Service interface {
 	Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error)
-	RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, error)
+	RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, string, error)
 	List(ctx context.Context, page, perPage int) ([]domain.User, int, error)
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, req domain.UpdateUserRequest) (*domain.User, error)
@@ -63,36 +65,39 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 	return u, nil
 }
 
-func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, error) {
+func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, string, error) {
 	if s.jwtProvider == nil {
-		return nil, "", errNotImplemented
+		return nil, "", "", errNotImplemented
 	}
 	u, err := s.Register(ctx, req)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
+	refreshToken := newRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
-		SessionID: uuid.NewString(),
-		UserID:    u.UserID,
-		DeviceID:  device.DeviceID,
-		Enable:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		SessionID:        uuid.NewString(),
+		UserID:           u.UserID,
+		DeviceID:         device.DeviceID,
+		Enable:           true,
+		RefreshToken:     refreshToken,
+		RefreshExpiresAt: now.Add(30 * 24 * time.Hour).Unix(),
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.RoleID, sess.SessionID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	sess.User = u
-	return sess, bearer, nil
+	return sess, bearer, refreshToken, nil
 }
 
 func (s *service) List(ctx context.Context, page, perPage int) ([]domain.User, int, error) {
@@ -181,4 +186,10 @@ func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID 
 		return nil, err
 	}
 	return d, nil
+}
+
+func newRefreshToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }

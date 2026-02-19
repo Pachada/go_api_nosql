@@ -24,12 +24,16 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	u, err := h.svc.Register(r.Context(), req)
+	sess, bearer, refreshToken, err := h.svc.RegisterWithSession(r.Context(), req)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, AuthEnvelope{Message: "user created", Session: &domain.Session{User: u}})
+	writeJSON(w, http.StatusCreated, AuthEnvelope{
+		Bearer:       bearer,
+		RefreshToken: refreshToken,
+		Session:      toSafeSession(sess),
+	})
 }
 
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -43,8 +47,12 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	if perPage > 0 && total > 0 {
 		maxPage = (total + perPage - 1) / perPage
 	}
+	safe := make([]*SafeUser, len(users))
+	for i := range users {
+		safe[i] = toSafeUser(&users[i])
+	}
 	writeJSON(w, http.StatusOK, PaginatedUsersEnvelope{
-		MaxPage: maxPage, ActualPage: page, PerPage: perPage, Data: users,
+		MaxPage: maxPage, ActualPage: page, PerPage: perPage, Data: safe,
 	})
 }
 
@@ -54,7 +62,7 @@ func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, u)
+	writeJSON(w, http.StatusOK, toSafeUser(u))
 }
 
 func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +86,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, u)
+	writeJSON(w, http.StatusOK, toSafeUser(u))
 }
 
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {

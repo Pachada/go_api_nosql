@@ -21,6 +21,7 @@ import (
 	"github.com/go-api-nosql/internal/infrastructure/sns"
 	"github.com/go-api-nosql/internal/transport/http/handler"
 	appmiddleware "github.com/go-api-nosql/internal/transport/http/middleware"
+	"golang.org/x/time/rate"
 )
 
 // Deps holds all infrastructure dependencies for the router.
@@ -54,6 +55,9 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 		authMw = func(next http.Handler) http.Handler { return next }
 	}
 
+	// 5 requests/second, burst of 10 — applied to sensitive public endpoints.
+	sensitiveRL := appmiddleware.NewRateLimiter(rate.Limit(5), 10)
+
 	sessionSvc := session.NewService(deps.SessionRepo, deps.UserRepo, deps.DeviceRepo, deps.JWTProvider)
 	userSvc := user.NewService(deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.JWTProvider)
 	roleSvc := role.NewService(deps.RoleRepo)
@@ -80,9 +84,10 @@ func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 		r.Post("/health-check/{action}", healthH.Ping)
 		r.Get("/test", healthH.Test)
 		r.Post("/test", healthH.Test)
-		r.Post("/sessions/login", sessionH.Login)
-		r.Post("/users", userH.Register)
-		r.Post("/password-recovery/{action}", pwH.Action)
+		r.With(sensitiveRL.Limit).Post("/sessions/login", sessionH.Login)
+		r.Post("/sessions/refresh", sessionH.Refresh)
+		r.With(sensitiveRL.Limit).Post("/users", userH.Register)
+		r.With(sensitiveRL.Limit).Post("/password-recovery/{action}", pwH.Action)
 
 		// ── Authenticated routes ─────────────────────────────────────────────
 		r.Group(func(r chi.Router) {

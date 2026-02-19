@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -34,7 +35,7 @@ type ChangePasswordRequest struct {
 
 type Service interface {
 	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
-	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (bearer string, session *domain.Session, err error)
+	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (bearer, refreshToken string, session *domain.Session, err error)
 	ChangePassword(ctx context.Context, userID, newPassword string) error
 	RequestEmailConfirmation(ctx context.Context, userID string) error
 	ValidateEmailToken(ctx context.Context, userID, token string) error
@@ -106,48 +107,51 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 	return s.smsSender.SendSMS(*req.PhoneNumber, "Your OTP: "+otp)
 }
 
-func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, *domain.Session, error) {
+func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, string, *domain.Session, error) {
 	if req.Email == nil {
-		return "", nil, errors.New("email required to validate OTP")
+		return "", "", nil, errors.New("email required to validate OTP")
 	}
 	u, err := s.userRepo.GetByEmail(ctx, *req.Email)
 	if err != nil {
-		return "", nil, errors.New("user not found")
+		return "", "", nil, errors.New("user not found")
 	}
 	v, err := s.verificationRepo.Get(ctx, u.UserID, "otp")
 	if err != nil {
-		return "", nil, errors.New("OTP not found")
+		return "", "", nil, errors.New("OTP not found")
 	}
 	if v.Code != req.OTP {
-		return "", nil, errors.New("invalid OTP")
+		return "", "", nil, errors.New("invalid OTP")
 	}
 	if v.ExpiresAt < time.Now().Unix() {
-		return "", nil, errors.New("OTP expired")
+		return "", "", nil, errors.New("OTP expired")
 	}
 	_ = s.verificationRepo.Delete(ctx, u.UserID, "otp")
 
 	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
+	refreshToken := newRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
-		SessionID: uuid.NewString(),
-		UserID:    u.UserID,
-		DeviceID:  device.DeviceID,
-		Enable:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		SessionID:        uuid.NewString(),
+		UserID:           u.UserID,
+		DeviceID:         device.DeviceID,
+		Enable:           true,
+		RefreshToken:     refreshToken,
+		RefreshExpiresAt: now.Add(30 * 24 * time.Hour).Unix(),
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.RoleID, sess.SessionID)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	sess.User = u
-	return bearer, sess, nil
+	return bearer, refreshToken, sess, nil
 }
 
 func (s *service) ChangePassword(ctx context.Context, userID, newPassword string) error {
@@ -230,4 +234,10 @@ func generateToken(n int) (string, error) {
 		b[i] = letters[idx.Int64()]
 	}
 	return string(b), nil
+}
+
+func newRefreshToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }

@@ -37,12 +37,12 @@ func (h *PasswordRecoveryHandler) Action(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		bearer, sess, err := h.svc.ValidateOTP(r.Context(), req)
+		bearer, refreshToken, sess, err := h.svc.ValidateOTP(r.Context(), req)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, AuthEnvelope{Bearer: bearer, Session: sess})
+		writeJSON(w, http.StatusOK, AuthEnvelope{Bearer: bearer, RefreshToken: refreshToken, Session: toSafeSession(sess)})
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}

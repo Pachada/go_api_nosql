@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -12,6 +14,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const refreshTokenDuration = 30 * 24 * time.Hour
+
 type LoginRequest struct {
 	Username   string  `json:"username" validate:"required"`
 	Password   string  `json:"password" validate:"required"`
@@ -19,14 +23,16 @@ type LoginRequest struct {
 }
 
 type LoginResult struct {
-	Bearer  string
-	Session *domain.Session
+	Bearer       string
+	RefreshToken string
+	Session      *domain.Session
 }
 
 type Service interface {
 	Login(ctx context.Context, req LoginRequest) (*LoginResult, error)
 	Logout(ctx context.Context, sessionID string) error
 	GetCurrent(ctx context.Context, sessionID string) (*domain.Session, error)
+	Refresh(ctx context.Context, refreshToken string) (bearer, newRefreshToken string, err error)
 }
 
 type service struct {
@@ -63,14 +69,17 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 	if err != nil {
 		return nil, err
 	}
+	refreshToken := newRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
-		SessionID: uuid.NewString(),
-		UserID:    u.UserID,
-		DeviceID:  device.DeviceID,
-		Enable:    true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		SessionID:        uuid.NewString(),
+		UserID:           u.UserID,
+		DeviceID:         device.DeviceID,
+		Enable:           true,
+		RefreshToken:     refreshToken,
+		RefreshExpiresAt: now.Add(refreshTokenDuration).Unix(),
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return nil, err
@@ -80,7 +89,7 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 		return nil, err
 	}
 	sess.User = u
-	return &LoginResult{Bearer: bearer, Session: sess}, nil
+	return &LoginResult{Bearer: bearer, RefreshToken: refreshToken, Session: sess}, nil
 }
 
 func (s *service) Logout(ctx context.Context, sessionID string) error {
@@ -101,6 +110,30 @@ func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Ses
 	}
 	sess.User = u
 	return sess, nil
+}
+
+func (s *service) Refresh(ctx context.Context, refreshToken string) (string, string, error) {
+	sess, err := s.sessionRepo.GetByRefreshToken(ctx, refreshToken)
+	if err != nil {
+		return "", "", errors.New("invalid or expired refresh token")
+	}
+	if sess.RefreshExpiresAt < time.Now().Unix() {
+		return "", "", errors.New("refresh token expired")
+	}
+	newToken := newRefreshToken()
+	newExpiry := time.Now().Add(refreshTokenDuration).Unix()
+	if err := s.sessionRepo.RotateRefreshToken(ctx, sess.SessionID, newToken, newExpiry); err != nil {
+		return "", "", err
+	}
+	u, err := s.userRepo.Get(ctx, sess.UserID)
+	if err != nil {
+		return "", "", err
+	}
+	bearer, err := s.jwtProvider.Sign(u.UserID, sess.DeviceID, u.RoleID, sess.SessionID)
+	if err != nil {
+		return "", "", err
+	}
+	return bearer, newToken, nil
 }
 
 func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID string) (*domain.Device, error) {
@@ -126,4 +159,10 @@ func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID 
 		return nil, err
 	}
 	return d, nil
+}
+
+func newRefreshToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
