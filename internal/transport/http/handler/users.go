@@ -43,22 +43,20 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
-	page, perPage := parsePagination(r)
-	users, total, err := h.svc.List(r.Context(), page, perPage)
+	limit, cursor := parseCursorPagination(r)
+	users, nextCursor, err := h.svc.List(r.Context(), limit, cursor)
 	if err != nil {
 		httpError(w, err)
 		return
-	}
-	maxPage := 1
-	if perPage > 0 && total > 0 {
-		maxPage = (total + perPage - 1) / perPage
 	}
 	safe := make([]*SafeUser, len(users))
 	for i := range users {
 		safe[i] = toSafeUser(&users[i])
 	}
-	writeJSON(w, http.StatusOK, PaginatedUsersEnvelope{
-		MaxPage: maxPage, ActualPage: page, PerPage: perPage, Data: safe,
+	writeJSON(w, http.StatusOK, CursorUsersEnvelope{
+		Data:       safe,
+		Count:      len(safe),
+		NextCursor: nextCursor,
 	})
 }
 
@@ -103,15 +101,12 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "deleted"})
 }
 
-func parsePagination(r *http.Request) (page, perPage int) {
-	page, _ = strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
+func parseCursorPagination(r *http.Request) (limit int, cursor string) {
+	limit, _ = strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit < 1 {
+		limit = 50
 	}
-	perPage, _ = strconv.Atoi(r.URL.Query().Get("per_page"))
-	if perPage < 1 {
-		perPage = 50
-	}
+	cursor = r.URL.Query().Get("cursor")
 	return
 }
 

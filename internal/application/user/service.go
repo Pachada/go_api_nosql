@@ -17,7 +17,7 @@ import (
 type Service interface {
 	Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error)
 	RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, string, error)
-	List(ctx context.Context, page, perPage int) ([]domain.User, int, error)
+	List(ctx context.Context, limit int, cursor string) ([]domain.User, string, error)
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, req domain.UpdateUserRequest) (*domain.User, error)
 	Delete(ctx context.Context, userID string) error
@@ -108,21 +108,11 @@ func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUser
 	return sess, bearer, refreshToken, nil
 }
 
-func (s *service) List(ctx context.Context, page, perPage int) ([]domain.User, int, error) {
-	all, err := s.repo.Scan(ctx)
-	if err != nil {
-		return nil, 0, err
+func (s *service) List(ctx context.Context, limit int, cursor string) ([]domain.User, string, error) {
+	if limit < 1 {
+		limit = 50
 	}
-	total := len(all)
-	start := (page - 1) * perPage
-	if start >= total {
-		return []domain.User{}, total, nil
-	}
-	end := start + perPage
-	if end > total {
-		end = total
-	}
-	return all[start:end], total, nil
+	return s.repo.ScanPage(ctx, int32(limit), cursor)
 }
 
 func (s *service) Get(ctx context.Context, userID string) (*domain.User, error) {

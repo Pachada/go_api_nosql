@@ -102,12 +102,11 @@ type SessionEnvelope struct {
 	Error   string       `json:"error,omitempty"`
 }
 
-// PaginatedUsersEnvelope wraps paginated user list responses.
-type PaginatedUsersEnvelope struct {
-	MaxPage    int         `json:"max_page"`
-	ActualPage int         `json:"actual_page"`
-	PerPage    int         `json:"per_page"`
+// CursorUsersEnvelope wraps cursor-paginated user list responses.
+type CursorUsersEnvelope struct {
 	Data       []*SafeUser `json:"data"`
+	Count      int         `json:"count"`
+	NextCursor string      `json:"next_cursor,omitempty"`
 	Error      string      `json:"error,omitempty"`
 }
 
