@@ -57,7 +57,6 @@ func main() {
 	deps := &transporthttp.Deps{
 		UserRepo:         dynamo.NewUserRepo(dynamoClient, cfg.DynamoTables.Users),
 		SessionRepo:      dynamo.NewSessionRepo(dynamoClient, cfg.DynamoTables.Sessions),
-		RoleRepo:         dynamo.NewRoleRepo(dynamoClient, cfg.DynamoTables.Roles),
 		StatusRepo:       dynamo.NewStatusRepo(dynamoClient, cfg.DynamoTables.Statuses),
 		DeviceRepo:       dynamo.NewDeviceRepo(dynamoClient, cfg.DynamoTables.Devices),
 		NotificationRepo: dynamo.NewNotificationRepo(dynamoClient, cfg.DynamoTables.Notifications),

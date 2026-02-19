@@ -10,7 +10,7 @@ import (
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
-	"github.com/google/uuid"
+	"github.com/go-api-nosql/internal/pkg/id"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -72,7 +72,7 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 	refreshToken := newRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
-		SessionID:        uuid.NewString(),
+		SessionID:        id.New(),
 		UserID:           u.UserID,
 		DeviceID:         device.DeviceID,
 		Enable:           true,
@@ -84,7 +84,7 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return nil, err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.RoleID, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	if err != nil {
 		return "", "", err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, sess.DeviceID, u.RoleID, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, sess.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return "", "", err
 	}
@@ -142,13 +142,13 @@ func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID 
 			return d, nil
 		}
 	}
-	devUUID := uuid.NewString()
+	devUUID := id.New()
 	if deviceUUID != nil {
 		devUUID = *deviceUUID
 	}
 	now := time.Now().UTC()
 	d := &domain.Device{
-		DeviceID:  uuid.NewString(),
+		DeviceID:  id.New(),
 		UUID:      devUUID,
 		UserID:    userID,
 		Enable:    true,

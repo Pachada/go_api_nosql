@@ -61,11 +61,27 @@ The `init-aws.sh` script runs automatically on first startup and creates all Dyn
 
 ## 4. Run the API
 
-Go back to the project root and run:
+### Standard run
 
 ```bash
 go run ./cmd/api
 ```
+
+### Hot reload (recommended for development)
+
+Uses [Air](https://github.com/air-verse/air) to watch for file changes and auto-restart:
+
+```bash
+air
+```
+
+Install Air once with:
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+The `.air.toml` at the project root is already configured. The compiled binary goes to `tmp/` (git-ignored).
 
 The server starts on port `3000` by default (set `APP_PORT` in `.env` to change).
 
@@ -77,7 +93,26 @@ On startup, `dynamo.Bootstrap()` calls `CreateTable` for every table — it sile
 
 ---
 
-## 5. Verify it works
+## 5. Reset LocalStack (wipe all data)
+
+To destroy all data and start completely fresh:
+
+```bash
+cd infra/localstack
+docker compose down -v   # stops container AND deletes the named volume
+docker compose up -d     # fresh container — init-aws.sh runs automatically
+```
+
+> **The `-v` flag is required.** Without it the named volume (`localstack_data`) persists and old data survives the restart.
+
+On fresh start, `init-aws.sh` automatically:
+- Creates all DynamoDB tables with their GSIs
+- Creates the S3 bucket
+- Seeds the default roles (`Admin` id=1, `User` id=2)
+
+---
+
+## 6. Verify it works
 
 ```bash
 curl http://localhost:3000/v1/health-check/ping

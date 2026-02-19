@@ -30,9 +30,10 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, AuthEnvelope{
-		Bearer:       bearer,
+		AccessToken:  bearer,
 		RefreshToken: refreshToken,
 		Session:      toSafeSession(sess),
+		User:         toSafeUser(sess.User),
 	})
 }
 
@@ -72,7 +73,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetID := chi.URLParam(r, "id")
-	if claims.UserID != targetID && claims.RoleID == "" {
+	if claims.UserID != targetID && claims.Role != domain.RoleAdmin {
 		writeError(w, http.StatusUnauthorized, "cannot update another user")
 		return
 	}
@@ -94,7 +95,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "user deleted"})
+	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "deleted"})
 }
 
 func parsePagination(r *http.Request) (page, perPage int) {

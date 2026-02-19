@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -47,15 +46,11 @@ func (h *NotificationHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Read int `json:"read"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	if err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id")); err != nil {
+	n, err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "notification updated"})
+	writeJSON(w, http.StatusOK, n)
 }
 

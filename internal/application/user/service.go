@@ -10,7 +10,7 @@ import (
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
-	"github.com/google/uuid"
+	"github.com/go-api-nosql/internal/pkg/id"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -45,16 +45,24 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	var birthday time.Time
+	if req.Birthday != "" {
+		birthday, err = time.Parse("2006-01-02", req.Birthday)
+		if err != nil {
+			return nil, errors.New("birthday must be in YYYY-MM-DD format")
+		}
+	}
 	now := time.Now().UTC()
 	u := &domain.User{
-		UserID:       uuid.NewString(),
+		UserID:       id.New(),
 		Username:     req.Username,
 		Email:        req.Email,
 		Phone:        req.Phone,
 		PasswordHash: string(hash),
 		FirstName:    req.FirstName,
 		LastName:     req.LastName,
-		Birthday:     req.Birthday,
+		Birthday:     birthday,
+		Role:         domain.RoleUser,
 		Enable:       true,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -80,7 +88,7 @@ func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUser
 	refreshToken := newRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
-		SessionID:        uuid.NewString(),
+		SessionID:        id.New(),
 		UserID:           u.UserID,
 		DeviceID:         device.DeviceID,
 		Enable:           true,
@@ -92,7 +100,7 @@ func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUser
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return nil, "", "", err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.RoleID, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -139,10 +147,14 @@ func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUs
 		updates["last_name"] = *req.LastName
 	}
 	if req.Birthday != nil {
-		updates["birthday"] = *req.Birthday
+		t, err := time.Parse("2006-01-02", *req.Birthday)
+		if err != nil {
+			return nil, errors.New("birthday must be in YYYY-MM-DD format")
+		}
+		updates["birthday"] = t
 	}
-	if req.RoleID != nil {
-		updates["role_id"] = *req.RoleID
+	if req.Role != nil {
+		updates["role"] = *req.Role
 	}
 	if req.Enable != nil {
 		updates["enable"] = *req.Enable
@@ -169,13 +181,13 @@ func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID 
 			return d, nil
 		}
 	}
-	devUUID := uuid.NewString()
+	devUUID := id.New()
 	if deviceUUID != nil {
 		devUUID = *deviceUUID
 	}
 	now := time.Now().UTC()
 	d := &domain.Device{
-		DeviceID:  uuid.NewString(),
+		DeviceID:  id.New(),
 		UUID:      devUUID,
 		UserID:    userID,
 		Enable:    true,

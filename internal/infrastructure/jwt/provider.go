@@ -15,7 +15,7 @@ import (
 type Claims struct {
 	UserID    string `json:"user_id"`
 	DeviceID  string `json:"device_id"`
-	RoleID    string `json:"role_id"`
+	Role      string `json:"role"`
 	SessionID string `json:"session_id"`
 	jwt.RegisteredClaims
 }
@@ -49,11 +49,11 @@ func NewProvider(cfg *config.Config) (*Provider, error) {
 	return &Provider{privateKey: privKey, publicKey: pubKey, expiryDays: cfg.JWTExpiryDays}, nil
 }
 
-func (p *Provider) Sign(userID, deviceID, roleID, sessionID string) (string, error) {
+func (p *Provider) Sign(userID, deviceID, role, sessionID string) (string, error) {
 	claims := Claims{
 		UserID:    userID,
 		DeviceID:  deviceID,
-		RoleID:    roleID,
+		Role:      role,
 		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().AddDate(0, 0, p.expiryDays)),

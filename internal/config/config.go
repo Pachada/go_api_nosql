@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds all runtime configuration loaded from environment variables.
@@ -23,14 +24,14 @@ type Config struct {
 	SMTPFrom     string
 	SMTPUsername string
 	SMTPPassword string
-	SNSRegion string
+	SNSRegion      string
+	AllowedOrigins []string // CORS allowed origins
 }
 
 // DynamoTables holds the DynamoDB table name for each entity.
 type DynamoTables struct {
 	Users             string
 	Sessions          string
-	Roles             string
 	Statuses          string
 	Devices           string
 	Notifications     string
@@ -51,7 +52,6 @@ func Load() *Config {
 		DynamoTables: DynamoTables{
 			Users:             getEnv("DYNAMO_TABLE_USERS", "users"),
 			Sessions:          getEnv("DYNAMO_TABLE_SESSIONS", "sessions"),
-			Roles:             getEnv("DYNAMO_TABLE_ROLES", "roles"),
 			Statuses:          getEnv("DYNAMO_TABLE_STATUSES", "statuses"),
 			Devices:           getEnv("DYNAMO_TABLE_DEVICES", "devices"),
 			Notifications:     getEnv("DYNAMO_TABLE_NOTIFICATIONS", "notifications"),
@@ -69,6 +69,7 @@ func Load() *Config {
 		SMTPUsername: getEnv("SMTP_USERNAME", ""),
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
 		SNSRegion: getEnv("SNS_REGION", "us-east-1"),
+		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
 	}
 }
 

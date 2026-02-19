@@ -1,0 +1,36 @@
+# Binaries
+/bin/
+/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build output
+/cmd/api/api
+/cmd/api/main
+
+# Test artifacts
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Environment & secrets
+.env
+*.pem
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# LocalStack persistent data (if run from project root)
+.localstack/
+
+# Go module download cache (not needed in repo)
+vendor/

@@ -42,7 +42,7 @@ func (h *PasswordRecoveryHandler) Action(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusUnauthorized, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, AuthEnvelope{Bearer: bearer, RefreshToken: refreshToken, Session: toSafeSession(sess)})
+		writeJSON(w, http.StatusOK, AuthEnvelope{AccessToken: bearer, RefreshToken: refreshToken, Session: toSafeSession(sess), User: toSafeUser(sess.User)})
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}

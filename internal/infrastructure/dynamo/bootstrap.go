@@ -49,17 +49,6 @@ func Bootstrap(ctx context.Context, client *dynamodb.Client, tables config.Dynam
 	})
 
 	createTable(ctx, client, &dynamodb.CreateTableInput{
-		TableName:   aws.String(tables.Roles),
-		BillingMode: types.BillingModePayPerRequest,
-		AttributeDefinitions: []types.AttributeDefinition{
-			{AttributeName: aws.String("role_id"), AttributeType: types.ScalarAttributeTypeS},
-		},
-		KeySchema: []types.KeySchemaElement{
-			{AttributeName: aws.String("role_id"), KeyType: types.KeyTypeHash},
-		},
-	})
-
-	createTable(ctx, client, &dynamodb.CreateTableInput{
 		TableName:   aws.String(tables.Statuses),
 		BillingMode: types.BillingModePayPerRequest,
 		AttributeDefinitions: []types.AttributeDefinition{

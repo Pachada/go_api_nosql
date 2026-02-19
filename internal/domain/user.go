@@ -8,7 +8,7 @@ type User struct {
 	Email          string    `json:"email" dynamodbav:"email"`
 	Phone          *string   `json:"phone" dynamodbav:"phone"`
 	PasswordHash   string    `json:"-" dynamodbav:"password_hash"`
-	RoleID         string    `json:"role_id" dynamodbav:"role_id"`
+	Role           string    `json:"role" dynamodbav:"role"`
 	FirstName      string    `json:"first_name" dynamodbav:"first_name"`
 	LastName       string    `json:"last_name" dynamodbav:"last_name"`
 	Birthday       time.Time `json:"birthday" dynamodbav:"birthday"`
@@ -21,14 +21,14 @@ type User struct {
 }
 
 type CreateUserRequest struct {
-	Username  string    `json:"username" validate:"required"`
-	Password  string    `json:"password" validate:"required"`
-	Email     string    `json:"email" validate:"required,email"`
-	Phone     *string   `json:"phone"`
-	FirstName string    `json:"first_name" validate:"required"`
-	LastName  string    `json:"last_name" validate:"required"`
-	Birthday  time.Time `json:"birthday" validate:"required"`
-	DeviceUUID *string  `json:"device_uuid"`
+	Username   string  `json:"username" validate:"required"`
+	Password   string  `json:"password" validate:"required"`
+	Email      string  `json:"email" validate:"required,email"`
+	Phone      *string `json:"phone"`
+	FirstName  string  `json:"first_name" validate:"required"`
+	LastName   string  `json:"last_name" validate:"required"`
+	Birthday   string  `json:"birthday"` // expected format: YYYY-MM-DD
+	DeviceUUID *string `json:"device_uuid"`
 }
 
 type UpdateUserRequest struct {
@@ -37,7 +37,7 @@ type UpdateUserRequest struct {
 	Phone     *string    `json:"phone"`
 	FirstName *string    `json:"first_name"`
 	LastName  *string    `json:"last_name"`
-	Birthday  *time.Time `json:"birthday"`
-	RoleID    *string    `json:"role_id"`
+	Birthday  *string    `json:"birthday"` // expected format: YYYY-MM-DD
+	Role      *string    `json:"role"`
 	Enable    *bool      `json:"enable"`
 }

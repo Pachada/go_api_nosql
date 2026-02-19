@@ -34,12 +34,6 @@ awslocal dynamodb create-table \
       {"IndexName":"refresh_token-index","KeySchema":[{"AttributeName":"refresh_token","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]'
 
 awslocal dynamodb create-table \
-  --table-name roles \
-  --attribute-definitions AttributeName=role_id,AttributeType=S \
-  --key-schema AttributeName=role_id,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
-
-awslocal dynamodb create-table \
   --table-name statuses \
   --attribute-definitions AttributeName=status_id,AttributeType=S \
   --key-schema AttributeName=status_id,KeyType=HASH \

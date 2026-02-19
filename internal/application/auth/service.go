@@ -14,7 +14,7 @@ import (
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
-	"github.com/google/uuid"
+	"github.com/go-api-nosql/internal/pkg/id"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -134,7 +134,7 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 	refreshToken := newRefreshToken()
 	now := time.Now().UTC()
 	sess := &domain.Session{
-		SessionID:        uuid.NewString(),
+		SessionID:        id.New(),
 		UserID:           u.UserID,
 		DeviceID:         device.DeviceID,
 		Enable:           true,
@@ -146,7 +146,7 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
 		return "", "", nil, err
 	}
-	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.RoleID, sess.SessionID)
+	bearer, err := s.jwtProvider.Sign(u.UserID, device.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -204,13 +204,13 @@ func (s *service) resolveDevice(ctx context.Context, deviceUUID *string, userID 
 			return d, nil
 		}
 	}
-	devUUID := uuid.NewString()
+	devUUID := id.New()
 	if deviceUUID != nil {
 		devUUID = *deviceUUID
 	}
 	now := time.Now().UTC()
 	d := &domain.Device{
-		DeviceID:  uuid.NewString(),
+		DeviceID:  id.New(),
 		UUID:      devUUID,
 		UserID:    userID,
 		Enable:    true,

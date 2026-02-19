@@ -14,10 +14,10 @@ type SafeUser struct {
 	Username       string    `json:"username"`
 	Email          string    `json:"email"`
 	Phone          *string   `json:"phone,omitempty"`
-	RoleID         string    `json:"role_id"`
+	Role           string    `json:"role"`
 	FirstName      string    `json:"first_name"`
 	LastName       string    `json:"last_name"`
-	Birthday       time.Time `json:"birthday,omitempty"`
+	Birthday       string    `json:"birthday,omitempty"`
 	Verified       bool      `json:"verified"`
 	EmailConfirmed bool      `json:"email_confirmed"`
 	PhoneConfirmed bool      `json:"phone_confirmed"`
@@ -26,15 +26,14 @@ type SafeUser struct {
 	UpdatedAt      time.Time `json:"updated"`
 }
 
-// SafeSession is the public-facing session DTO that omits RefreshToken and RefreshExpiresAt.
+// SafeSession is the public-facing session DTO that omits RefreshToken, RefreshExpiresAt, and User.
 type SafeSession struct {
 	SessionID string    `json:"id"`
 	UserID    string    `json:"user_id"`
-	DeviceID  string    `json:"device_id,omitempty"`
+	DeviceID  *string   `json:"device_id"`
 	Enable    bool      `json:"enable"`
 	CreatedAt time.Time `json:"created"`
 	UpdatedAt time.Time `json:"updated"`
-	User      *SafeUser `json:"user,omitempty"`
 }
 
 func toSafeUser(u *domain.User) *SafeUser {
@@ -46,10 +45,10 @@ func toSafeUser(u *domain.User) *SafeUser {
 		Username:       u.Username,
 		Email:          u.Email,
 		Phone:          u.Phone,
-		RoleID:         u.RoleID,
+		Role:           u.Role,
 		FirstName:      u.FirstName,
 		LastName:       u.LastName,
-		Birthday:       u.Birthday,
+		Birthday:       formatDate(u.Birthday),
 		Verified:       u.Verified,
 		EmailConfirmed: u.EmailConfirmed,
 		PhoneConfirmed: u.PhoneConfirmed,
@@ -63,18 +62,18 @@ func toSafeSession(s *domain.Session) *SafeSession {
 	if s == nil {
 		return nil
 	}
-	ss := &SafeSession{
+	var deviceID *string
+	if s.DeviceID != "" {
+		deviceID = &s.DeviceID
+	}
+	return &SafeSession{
 		SessionID: s.SessionID,
 		UserID:    s.UserID,
-		DeviceID:  s.DeviceID,
+		DeviceID:  deviceID,
 		Enable:    s.Enable,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
 	}
-	if s.User != nil {
-		ss.User = toSafeUser(s.User)
-	}
-	return ss
 }
 
 // MessageEnvelope is the generic response wrapper.
@@ -86,9 +85,10 @@ type MessageEnvelope struct {
 
 // AuthEnvelope wraps login/register responses.
 type AuthEnvelope struct {
-	Bearer       string       `json:"Bearer,omitempty"`
+	AccessToken  string       `json:"access_token,omitempty"`
 	RefreshToken string       `json:"refresh_token,omitempty"`
 	Session      *SafeSession `json:"session,omitempty"`
+	User         *SafeUser    `json:"user,omitempty"`
 	Message      string       `json:"message,omitempty"`
 	Error        string       `json:"error,omitempty"`
 }
@@ -96,6 +96,7 @@ type AuthEnvelope struct {
 // SessionEnvelope wraps current-session responses.
 type SessionEnvelope struct {
 	Session *SafeSession `json:"session,omitempty"`
+	User    *SafeUser    `json:"user,omitempty"`
 	Message string       `json:"message,omitempty"`
 	Error   string       `json:"error,omitempty"`
 }
@@ -117,4 +118,12 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, MessageEnvelope{Error: msg})
+}
+
+// formatDate formats a time.Time as "yyyy-mm-dd". Returns "" for zero time.
+func formatDate(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("2006-01-02")
 }

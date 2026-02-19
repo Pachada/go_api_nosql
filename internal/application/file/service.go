@@ -12,7 +12,7 @@ import (
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	s3infra "github.com/go-api-nosql/internal/infrastructure/s3"
-	"github.com/google/uuid"
+	"github.com/go-api-nosql/internal/pkg/id"
 )
 
 type UploadInput struct {
@@ -49,7 +49,7 @@ func (s *service) Upload(ctx context.Context, input UploadInput) (*domain.File, 
 	}
 	now := time.Now().UTC()
 	f := &domain.File{
-		FileID:           uuid.NewString(),
+		FileID:           id.New(),
 		Object:           key,
 		Size:             input.Size,
 		Type:             input.ContentType,
@@ -75,7 +75,7 @@ func (s *service) UploadBase64(ctx context.Context, filename, base64Data string,
 	}
 	now := time.Now().UTC()
 	f := &domain.File{
-		FileID:           uuid.NewString(),
+		FileID:           id.New(),
 		Object:           key,
 		Size:             0,
 		Type:             contentTypeFromName(filename),

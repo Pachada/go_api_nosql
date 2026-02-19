@@ -10,7 +10,7 @@ import (
 type Service interface {
 	ListUnread(ctx context.Context, userID string) ([]domain.Notification, error)
 	Get(ctx context.Context, notificationID, userID string) (*domain.Notification, error)
-	MarkAsRead(ctx context.Context, notificationID string) error
+	MarkAsRead(ctx context.Context, notificationID string) (*domain.Notification, error)
 }
 
 type service struct {
@@ -29,6 +29,6 @@ func (s *service) Get(ctx context.Context, notificationID, _ string) (*domain.No
 	return s.repo.Get(ctx, notificationID)
 }
 
-func (s *service) MarkAsRead(ctx context.Context, notificationID string) error {
+func (s *service) MarkAsRead(ctx context.Context, notificationID string) (*domain.Notification, error) {
 	return s.repo.MarkAsRead(ctx, notificationID)
 }

@@ -29,9 +29,10 @@ func (h *SessionHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, AuthEnvelope{
-		Bearer:       result.Bearer,
+		AccessToken:  result.Bearer,
 		RefreshToken: result.RefreshToken,
 		Session:      toSafeSession(result.Session),
+		User:         toSafeUser(result.Session.User),
 	})
 }
 
@@ -48,7 +49,7 @@ func (h *SessionHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, AuthEnvelope{Bearer: bearer, RefreshToken: newToken})
+	writeJSON(w, http.StatusOK, AuthEnvelope{AccessToken: bearer, RefreshToken: newToken})
 }
 
 func (h *SessionHandler) GetCurrent(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +63,7 @@ func (h *SessionHandler) GetCurrent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, SessionEnvelope{Session: toSafeSession(sess)})
+	writeJSON(w, http.StatusOK, SessionEnvelope{Session: toSafeSession(sess), User: toSafeUser(sess.User)})
 }
 
 func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
