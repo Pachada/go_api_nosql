@@ -35,14 +35,27 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" validate:"required"`
 }
 
-type Service interface {
+type PasswordRecoveryService interface {
 	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
 	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (bearer, refreshToken string, session *domain.Session, err error)
 	ChangePassword(ctx context.Context, userID, newPassword string) error
+}
+
+type EmailConfirmationService interface {
 	RequestEmailConfirmation(ctx context.Context, userID string) error
 	ValidateEmailToken(ctx context.Context, userID, token string) error
+}
+
+type PhoneConfirmationService interface {
 	RequestPhoneConfirmation(ctx context.Context, userID string) error
 	ValidatePhoneOTP(ctx context.Context, userID, otp string) error
+}
+
+// Service composes the three focused auth sub-services.
+type Service interface {
+	PasswordRecoveryService
+	EmailConfirmationService
+	PhoneConfirmationService
 }
 
 type service struct {

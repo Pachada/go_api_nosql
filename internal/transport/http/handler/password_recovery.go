@@ -12,10 +12,10 @@ import (
 
 // PasswordRecoveryHandler handles password recovery flow endpoints.
 type PasswordRecoveryHandler struct {
-	svc auth.Service
+	svc auth.PasswordRecoveryService
 }
 
-func NewPasswordRecoveryHandler(svc auth.Service) *PasswordRecoveryHandler {
+func NewPasswordRecoveryHandler(svc auth.PasswordRecoveryService) *PasswordRecoveryHandler {
 	return &PasswordRecoveryHandler{svc: svc}
 }
 

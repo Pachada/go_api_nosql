@@ -11,10 +11,10 @@ import (
 
 // EmailConfirmHandler handles email confirmation flow endpoints.
 type EmailConfirmHandler struct {
-	svc auth.Service
+	svc auth.EmailConfirmationService
 }
 
-func NewEmailConfirmHandler(svc auth.Service) *EmailConfirmHandler {
+func NewEmailConfirmHandler(svc auth.EmailConfirmationService) *EmailConfirmHandler {
 	return &EmailConfirmHandler{svc: svc}
 }
 

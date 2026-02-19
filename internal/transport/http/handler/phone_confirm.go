@@ -11,10 +11,10 @@ import (
 
 // PhoneConfirmHandler handles phone confirmation flow endpoints.
 type PhoneConfirmHandler struct {
-	svc auth.Service
+	svc auth.PhoneConfirmationService
 }
 
-func NewPhoneConfirmHandler(svc auth.Service) *PhoneConfirmHandler {
+func NewPhoneConfirmHandler(svc auth.PhoneConfirmationService) *PhoneConfirmHandler {
 	return &PhoneConfirmHandler{svc: svc}
 }
 
