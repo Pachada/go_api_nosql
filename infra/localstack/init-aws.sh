@@ -26,10 +26,12 @@ awslocal dynamodb create-table \
   --attribute-definitions \
     AttributeName=session_id,AttributeType=S \
     AttributeName=user_id,AttributeType=S \
+    AttributeName=refresh_token,AttributeType=S \
   --key-schema AttributeName=session_id,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
   --global-secondary-indexes \
-    '[{"IndexName":"user_id-index","KeySchema":[{"AttributeName":"user_id","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]'
+    '[{"IndexName":"user_id-index","KeySchema":[{"AttributeName":"user_id","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}},
+      {"IndexName":"refresh_token-index","KeySchema":[{"AttributeName":"refresh_token","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]'
 
 awslocal dynamodb create-table \
   --table-name roles \
