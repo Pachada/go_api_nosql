@@ -24,7 +24,7 @@ func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	devices, err := h.svc.List(r.Context(), claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, devices)
@@ -33,7 +33,7 @@ func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *DeviceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	d, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, d)
@@ -47,7 +47,7 @@ func (h *DeviceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, err := h.svc.Update(r.Context(), chi.URLParam(r, "id"), fields)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
@@ -55,7 +55,7 @@ func (h *DeviceHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *DeviceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "device deleted"})
@@ -76,7 +76,7 @@ func (h *DeviceHandler) CheckVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	upToDate, err := h.svc.CheckVersion(r.Context(), claims.SessionID, body.DeviceVersion)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	if !upToDate {

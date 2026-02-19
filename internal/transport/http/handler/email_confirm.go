@@ -27,7 +27,7 @@ func (h *EmailConfirmHandler) Action(w http.ResponseWriter, r *http.Request) {
 	switch chi.URLParam(r, "action") {
 	case "request":
 		if err := h.svc.RequestEmailConfirmation(r.Context(), claims.UserID); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			httpError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "confirmation email sent"})
@@ -40,7 +40,7 @@ func (h *EmailConfirmHandler) Action(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.svc.ValidateEmailToken(r.Context(), claims.UserID, body.Token); err != nil {
-			writeError(w, http.StatusUnauthorized, err.Error())
+			httpError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "email confirmed"})

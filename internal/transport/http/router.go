@@ -44,7 +44,7 @@ type Deps struct {
 // NewRouter builds and returns the application router.
 func NewRouter(cfg *config.Config, deps *Deps) http.Handler {
 	r := chi.NewRouter()
-	r.Use(chimiddleware.Logger)
+	r.Use(appmiddleware.RequestLogger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.RequestID)
 	r.Use(cors.Handler(cors.Options{

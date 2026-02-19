@@ -3,7 +3,6 @@ package file
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -100,10 +99,10 @@ func (s *service) Download(ctx context.Context, fileID, requesterID string, isAd
 		return nil, nil, err
 	}
 	if !f.Enable {
-		return nil, nil, errors.New("file not found")
+		return nil, nil, fmt.Errorf("file not found: %w", domain.ErrNotFound)
 	}
 	if f.IsPrivate && f.UploadedByUserID != requesterID && !isAdmin {
-		return nil, nil, errors.New("access denied")
+		return nil, nil, fmt.Errorf("access denied: %w", domain.ErrForbidden)
 	}
 	rc, err := s.s3.Download(ctx, f.Object)
 	if err != nil {
@@ -118,10 +117,10 @@ func (s *service) Delete(ctx context.Context, fileID, requesterID string, isAdmi
 		return err
 	}
 	if !f.Enable {
-		return errors.New("file not found")
+		return fmt.Errorf("file not found: %w", domain.ErrNotFound)
 	}
 	if f.IsPrivate && f.UploadedByUserID != requesterID && !isAdmin {
-		return errors.New("access denied")
+		return fmt.Errorf("access denied: %w", domain.ErrForbidden)
 	}
 	if err := s.s3.Delete(ctx, f.Object); err != nil {
 		return err

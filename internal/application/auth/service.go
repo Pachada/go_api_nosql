@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -77,12 +76,12 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 	if req.Email != nil {
 		u, err = s.userRepo.GetByEmail(ctx, *req.Email)
 		if err != nil {
-			return errors.New("user not found")
+			return fmt.Errorf("user not found: %w", domain.ErrNotFound)
 		}
 	} else if req.PhoneNumber != nil {
-		return errors.New("phone recovery not supported; provide email")
+		return fmt.Errorf("phone recovery not supported; provide email: %w", domain.ErrBadRequest)
 	} else {
-		return errors.New("email or phone_number required")
+		return fmt.Errorf("email or phone_number required: %w", domain.ErrBadRequest)
 	}
 
 	n, err := rand.Int(rand.Reader, big.NewInt(999999))
@@ -109,21 +108,21 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 
 func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, string, *domain.Session, error) {
 	if req.Email == nil {
-		return "", "", nil, errors.New("email required to validate OTP")
+		return "", "", nil, fmt.Errorf("email required to validate OTP: %w", domain.ErrBadRequest)
 	}
 	u, err := s.userRepo.GetByEmail(ctx, *req.Email)
 	if err != nil {
-		return "", "", nil, errors.New("user not found")
+		return "", "", nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	v, err := s.verificationRepo.Get(ctx, u.UserID, "otp")
 	if err != nil {
-		return "", "", nil, errors.New("OTP not found")
+		return "", "", nil, fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
 	}
 	if v.Code != req.OTP {
-		return "", "", nil, errors.New("invalid OTP")
+		return "", "", nil, fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
-		return "", "", nil, errors.New("OTP expired")
+		return "", "", nil, fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
 	}
 	_ = s.verificationRepo.Delete(ctx, u.UserID, "otp")
 
@@ -186,13 +185,13 @@ func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) e
 func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) error {
 	v, err := s.verificationRepo.Get(ctx, userID, "email")
 	if err != nil {
-		return errors.New("token not found")
+		return fmt.Errorf("token not found: %w", domain.ErrNotFound)
 	}
 	if v.Code != token {
-		return errors.New("invalid token")
+		return fmt.Errorf("invalid token: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
-		return errors.New("token expired")
+		return fmt.Errorf("token expired: %w", domain.ErrUnauthorized)
 	}
 	_ = s.verificationRepo.Delete(ctx, userID, "email")
 	return s.userRepo.Update(ctx, userID, map[string]interface{}{"email_confirmed": true})

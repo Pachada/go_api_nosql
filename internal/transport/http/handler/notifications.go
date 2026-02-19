@@ -25,7 +25,7 @@ func (h *NotificationHandler) ListUnread(w http.ResponseWriter, r *http.Request)
 	}
 	notifications, err := h.svc.ListUnread(r.Context(), claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, notifications)
@@ -39,7 +39,7 @@ func (h *NotificationHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	n, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"), claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, n)
@@ -48,7 +48,7 @@ func (h *NotificationHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 	n, err := h.svc.MarkAsRead(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, n)

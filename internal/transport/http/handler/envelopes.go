@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -118,6 +119,25 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, MessageEnvelope{Error: msg})
+}
+
+// httpError maps domain sentinel errors to HTTP status codes.
+// Infrastructure errors (DynamoDB, S3, etc.) are hidden behind a generic 500 message.
+func httpError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, domain.ErrConflict):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, domain.ErrUnauthorized):
+		writeError(w, http.StatusUnauthorized, err.Error())
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, domain.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "internal server error")
+	}
 }
 
 // formatDate formats a time.Time as "yyyy-mm-dd". Returns "" for zero time.

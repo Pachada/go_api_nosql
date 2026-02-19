@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/user"
 	"github.com/go-api-nosql/internal/domain"
+	"github.com/go-api-nosql/internal/pkg/validate"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
 )
 
@@ -24,9 +25,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 	sess, bearer, refreshToken, err := h.svc.RegisterWithSession(r.Context(), req)
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, AuthEnvelope{
@@ -41,7 +46,7 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	page, perPage := parsePagination(r)
 	users, total, err := h.svc.List(r.Context(), page, perPage)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	maxPage := 1
@@ -60,7 +65,7 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
 	u, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toSafeUser(u))
@@ -84,7 +89,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := h.svc.Update(r.Context(), targetID, req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toSafeUser(u))
@@ -92,7 +97,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "deleted"})

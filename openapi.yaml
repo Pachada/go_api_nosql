@@ -1,8 +1,944 @@
 openapi: 3.0.3
 info:
-  title: WSGI Falcon API
+  title: Go API NoSQL
   version: 1.0.0
-  description: OpenAPI draft generated from Falcon controllers and middleware behavior.
+  description: REST API backed by DynamoDB and S3 on LocalStack. Uses RS256 JWT authentication with refresh token rotation.
+servers:
+  - url: http://127.0.0.1:3000
+tags:
+  - name: Health
+  - name: Sessions
+  - name: Users
+  - name: Password Recovery
+  - name: Email Confirmation
+  - name: Roles
+  - name: Statuses
+  - name: Devices
+  - name: Notifications
+  - name: Files S3
+paths:
+  /v1/health-check/{action}:
+    get:
+      tags: [Health]
+      summary: Health-check action
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/HealthAction'
+      responses:
+        '200':
+          description: Health action result
+    post:
+      tags: [Health]
+      summary: Health-check action (POST)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/HealthAction'
+      responses:
+        '200':
+          description: Health action result
+
+  /v1/sessions:
+    get:
+      tags: [Sessions]
+      summary: Get current session and user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/sessions/login:
+    post:
+      tags: [Sessions]
+      summary: Login with username/email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/sessions/refresh:
+    post:
+      tags: [Sessions]
+      summary: Refresh access token using a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New access and refresh tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/sessions/logout:
+    post:
+      tags: [Sessions]
+      summary: Logout current session
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Session ended
+
+  /v1/users:
+    get:
+      tags: [Users]
+      summary: List users (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsersEnvelope'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Users]
+      summary: Register new user and auto-login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created and session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '409':
+          description: Username or email already exists
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by id (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Users]
+      summary: Update user by id (self or admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Users]
+      summary: Delete user by id (soft delete, admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageEnvelope'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/password-recovery/{action}:
+    post:
+      tags: [Password Recovery]
+      summary: Password recovery flow action
+      description: |
+        - **action=request**: Send OTP to email. Body: `{ "email": "..." }`
+        - **action=validate-code**: Validate OTP, returns access/refresh tokens. Body: `{ "otp": "...", "email": "...", "device_uuid": "..." }`
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PasswordRecoveryAction'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/PasswordRecoveryRequest'
+                - $ref: '#/components/schemas/PasswordRecoveryValidateRequest'
+      responses:
+        '200':
+          description: Action result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MessageEnvelope'
+                  - $ref: '#/components/schemas/AuthEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/password-recovery/change-password:
+    post:
+      tags: [Password Recovery]
+      summary: Change password for authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/confirm-email/{action}:
+    post:
+      tags: [Email Confirmation]
+      summary: Email confirmation flow action
+      description: |
+        - **action=request**: Send confirmation email
+        - **action=validate-code**: Validate token from email. Body: `{ "token": "..." }`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConfirmEmailAction'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmEmailValidateRequest'
+      responses:
+        '200':
+          description: Action result
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/roles:
+    get:
+      tags: [Roles]
+      summary: List available roles
+      security: []
+      responses:
+        '200':
+          description: Role names list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["Admin", "User"]
+
+  /v1/statuses:
+    get:
+      tags: [Statuses]
+      summary: List all statuses
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Status list
+    post:
+      tags: [Statuses]
+      summary: Create status (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusInput'
+      responses:
+        '201':
+          description: Status created
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/statuses/{id}:
+    get:
+      tags: [Statuses]
+      summary: Get status by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Status detail
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Statuses]
+      summary: Update status (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusInput'
+      responses:
+        '200':
+          description: Status updated
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [Statuses]
+      summary: Delete status (admin only, hard delete)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Status deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/devices:
+    get:
+      tags: [Devices]
+      summary: List devices for current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Devices list
+
+  /v1/devices/{id}:
+    get:
+      tags: [Devices]
+      summary: Get device by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Device detail
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Devices]
+      summary: Update device by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Device updated
+    delete:
+      tags: [Devices]
+      summary: Delete device
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Device deleted
+
+  /v1/devices/version:
+    put:
+      tags: [Devices]
+      summary: Check device app version
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_version]
+              properties:
+                device_version:
+                  type: number
+                  format: float
+      responses:
+        '200':
+          description: Up-to-date
+        '409':
+          description: Update required
+
+  /v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: List unread notifications for current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notifications list
+
+  /v1/notifications/{id}:
+    get:
+      tags: [Notifications]
+      summary: Get notification by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Notification detail
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Notifications]
+      summary: Mark notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Updated notification
+
+  /v1/files/s3:
+    post:
+      tags: [Files S3]
+      summary: Upload S3 file (multipart/form-data)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: private
+          in: query
+          schema:
+            type: string
+            enum: ["True", "False"]
+        - name: thumbnail
+          in: query
+          schema:
+            type: string
+            enum: ["True", "False"]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: File uploaded
+
+  /v1/files/s3/{id}:
+    get:
+      tags: [Files S3]
+      summary: Download S3 file by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: File stream
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Files S3]
+      summary: Delete S3 file by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: File deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/files/s3/base64:
+    post:
+      tags: [Files S3]
+      summary: Upload S3 file from base64 payload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_name, base64]
+              properties:
+                file_name:
+                  type: string
+                base64:
+                  type: string
+      responses:
+        '201':
+          description: File uploaded
+    get:
+      tags: [Files S3]
+      summary: Not implemented
+      security:
+        - bearerAuth: []
+      responses:
+        '501':
+          description: Not implemented
+
+  /v1/files/s3/base64/{id}:
+    get:
+      tags: [Files S3]
+      summary: Get S3 file with base64 content by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: File with base64 content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file:
+                    type: object
+                  base64:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+    ValidationError:
+      description: Validation error (missing or invalid fields)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MessageEnvelope'
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 50
+    HealthAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [ping]
+    PasswordRecoveryAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [request, validate-code]
+    ConfirmEmailAction:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [request, validate-code]
+
+  schemas:
+    MessageEnvelope:
+      type: object
+      properties:
+        message:
+          type: string
+        error:
+          type: string
+        error_code:
+          type: integer
+
+    SessionEnvelope:
+      type: object
+      properties:
+        session:
+          $ref: '#/components/schemas/Session'
+        user:
+          $ref: '#/components/schemas/User'
+        message:
+          type: string
+        error:
+          type: string
+
+    AuthEnvelope:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        session:
+          $ref: '#/components/schemas/Session'
+        user:
+          $ref: '#/components/schemas/User'
+        message:
+          type: string
+        error:
+          type: string
+
+    PaginatedUsersEnvelope:
+      type: object
+      properties:
+        max_page:
+          type: integer
+        actual_page:
+          type: integer
+        per_page:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        error:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: Username or email address
+        password:
+          type: string
+          format: password
+        device_uuid:
+          type: string
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, email, first_name, last_name]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date
+          description: "Date in YYYY-MM-DD format"
+          example: "1998-01-10"
+        device_uuid:
+          type: string
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date
+          description: "Date in YYYY-MM-DD format"
+          example: "1998-01-10"
+        role:
+          type: string
+          enum: [Admin, User]
+        enable:
+          type: boolean
+
+    PasswordRecoveryRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        phone_number:
+          type: string
+
+    PasswordRecoveryValidateRequest:
+      type: object
+      required: [otp, email]
+      properties:
+        otp:
+          type: string
+        email:
+          type: string
+          format: email
+        device_uuid:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required: [new_password]
+      properties:
+        new_password:
+          type: string
+          format: password
+
+    ConfirmEmailValidateRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    StatusInput:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        device_id:
+          type: string
+          nullable: true
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [Admin, User]
+        first_name:
+          type: string
+        last_name:
+          type: string
+        birthday:
+          type: string
+          format: date
+          description: "Date in YYYY-MM-DD format"
+          example: "1998-01-10"
+        verified:
+          type: boolean
+        email_confirmed:
+          type: boolean
+        phone_confirmed:
+          type: boolean
+        enable:
+          type: boolean
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+        uuid:
+          type: string
+        user_id:
+          type: string
+        token:
+          type: string
+          nullable: true
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+
+    File:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        size:
+          type: integer
+        type:
+          type: string
+        name:
+          type: string
+        hash:
+          type: string
+        is_thumbnail:
+          type: boolean
+        url:
+          type: string
+        is_private:
+          type: boolean
+        uploaded_by_user_id:
+          type: string
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        enable:
+          type: boolean
+
 servers:
   - url: http://127.0.0.1:3000
 tags:

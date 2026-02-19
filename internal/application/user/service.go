@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
@@ -36,10 +36,10 @@ func NewService(repo *dynamo.UserRepo, sessionRepo *dynamo.SessionRepo, deviceRe
 
 func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error) {
 	if _, err := s.repo.GetByUsername(ctx, req.Username); err == nil {
-		return nil, errors.New("username already taken")
+		return nil, fmt.Errorf("username already taken: %w", domain.ErrConflict)
 	}
 	if _, err := s.repo.GetByEmail(ctx, req.Email); err == nil {
-		return nil, errors.New("email already registered")
+		return nil, fmt.Errorf("email already registered: %w", domain.ErrConflict)
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -49,7 +49,7 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 	if req.Birthday != "" {
 		birthday, err = time.Parse("2006-01-02", req.Birthday)
 		if err != nil {
-			return nil, errors.New("birthday must be in YYYY-MM-DD format")
+			return nil, fmt.Errorf("birthday must be in YYYY-MM-DD format: %w", domain.ErrBadRequest)
 		}
 	}
 	now := time.Now().UTC()
@@ -149,7 +149,7 @@ func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUs
 	if req.Birthday != nil {
 		t, err := time.Parse("2006-01-02", *req.Birthday)
 		if err != nil {
-			return nil, errors.New("birthday must be in YYYY-MM-DD format")
+			return nil, fmt.Errorf("birthday must be in YYYY-MM-DD format: %w", domain.ErrBadRequest)
 		}
 		updates["birthday"] = t
 	}

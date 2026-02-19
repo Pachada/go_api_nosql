@@ -44,7 +44,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		UploaderID:  claims.UserID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, uploaded)
@@ -66,7 +66,7 @@ func (h *FileHandler) UploadBase64(w http.ResponseWriter, r *http.Request) {
 	}
 	uploaded, err := h.svc.UploadBase64(r.Context(), body.FileName, body.Base64, claims.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, uploaded)
@@ -80,7 +80,7 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 	rc, _, err := h.svc.Download(r.Context(), chi.URLParam(r, "id"), claims.UserID, false)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	defer rc.Close()
@@ -95,14 +95,14 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id"), claims.UserID, false); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "file deleted"})
 }
 
 func (h *FileHandler) ListBase64(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "not implemented"})
+	writeError(w, http.StatusNotImplemented, "not implemented")
 }
 
 func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +113,7 @@ func (h *FileHandler) GetBase64(w http.ResponseWriter, r *http.Request) {
 	}
 	f, b64, err := h.svc.GetBase64(r.Context(), chi.URLParam(r, "id"), claims.UserID, false)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		httpError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"file": f, "base64": b64})

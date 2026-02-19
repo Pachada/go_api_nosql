@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
@@ -56,14 +56,14 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 	if err != nil {
 		u, err = s.userRepo.GetByEmail(ctx, req.Username)
 		if err != nil {
-			return nil, errors.New("invalid credentials")
+			return nil, fmt.Errorf("invalid credentials: %w", domain.ErrUnauthorized)
 		}
 	}
 	if !u.Enable {
-		return nil, errors.New("account disabled")
+		return nil, fmt.Errorf("account disabled: %w", domain.ErrUnauthorized)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
-		return nil, errors.New("invalid credentials")
+		return nil, fmt.Errorf("invalid credentials: %w", domain.ErrUnauthorized)
 	}
 	device, err := s.resolveDevice(ctx, req.DeviceUUID, u.UserID)
 	if err != nil {
@@ -102,7 +102,7 @@ func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Ses
 		return nil, err
 	}
 	if !sess.Enable {
-		return nil, errors.New("session expired")
+		return nil, fmt.Errorf("session expired: %w", domain.ErrUnauthorized)
 	}
 	u, err := s.userRepo.Get(ctx, sess.UserID)
 	if err != nil {
@@ -115,10 +115,10 @@ func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Ses
 func (s *service) Refresh(ctx context.Context, refreshToken string) (string, string, error) {
 	sess, err := s.sessionRepo.GetByRefreshToken(ctx, refreshToken)
 	if err != nil {
-		return "", "", errors.New("invalid or expired refresh token")
+		return "", "", fmt.Errorf("invalid or expired refresh token: %w", domain.ErrUnauthorized)
 	}
 	if sess.RefreshExpiresAt < time.Now().Unix() {
-		return "", "", errors.New("refresh token expired")
+		return "", "", fmt.Errorf("refresh token expired: %w", domain.ErrUnauthorized)
 	}
 	newToken := newRefreshToken()
 	newExpiry := time.Now().Add(refreshTokenDuration).Unix()
