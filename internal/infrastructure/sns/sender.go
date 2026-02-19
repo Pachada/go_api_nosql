@@ -10,7 +10,7 @@ import (
 
 // SMSSender sends SMS messages via AWS SNS.
 type SMSSender interface {
-	SendSMS(to, message string) error
+	SendSMS(ctx context.Context, to, message string) error
 }
 
 type sender struct {
@@ -27,8 +27,8 @@ func NewSender(cfg *config.Config) (SMSSender, error) {
 	return &sender{client: sns.NewFromConfig(awsCfg)}, nil
 }
 
-func (s *sender) SendSMS(to, message string) error {
-	_, err := s.client.Publish(context.Background(), &sns.PublishInput{
+func (s *sender) SendSMS(ctx context.Context, to, message string) error {
+	_, err := s.client.Publish(ctx, &sns.PublishInput{
 		PhoneNumber: &to,
 		Message:     &message,
 	})

@@ -110,7 +110,7 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 	if req.Email != nil {
 		return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
 	}
-	return s.smsSender.SendSMS(*req.PhoneNumber, "Your OTP: "+otp)
+	return s.smsSender.SendSMS(ctx, *req.PhoneNumber, "Your OTP: "+otp)
 }
 
 func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, string, *domain.Session, error) {
@@ -232,7 +232,7 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if err := s.verificationRepo.Put(ctx, v); err != nil {
 		return err
 	}
-	return s.smsSender.SendSMS(*u.Phone, "Your verification code: "+otp)
+	return s.smsSender.SendSMS(ctx, *u.Phone, "Your verification code: "+otp)
 }
 
 func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) error {

@@ -52,12 +52,17 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, uploaded)
 }
 
+// maxBase64UploadBytes caps the base64 request body at 10 MB (encoded).
+// Base64 inflates ~33 %, so this allows up to ~7.5 MB of raw file data.
+const maxBase64UploadBytes = 10 << 20
+
 func (h *FileHandler) UploadBase64(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBase64UploadBytes)
 	var body struct {
 		FileName string `json:"file_name"`
 		Base64   string `json:"base64"`
