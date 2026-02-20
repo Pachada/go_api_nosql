@@ -25,6 +25,7 @@ type Config struct {
 	SMTPFrom     string
 	SMTPUsername string
 	SMTPPassword string
+SMTPTLSEnabled bool   // enforce STARTTLS; set SMTP_TLS=true in production
 	SNSRegion      string
 	AllowedOrigins []string // CORS allowed origins
 }
@@ -70,6 +71,7 @@ func Load() *Config {
 		SMTPFrom:     getEnv("SMTP_FROM", "noreply@example.com"),
 		SMTPUsername: getEnv("SMTP_USERNAME", ""),
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
+SMTPTLSEnabled: getEnvBool("SMTP_TLS", false),
 		SNSRegion: getEnv("SNS_REGION", "us-east-1"),
 		AllowedOrigins: func() []string {
 			parts := strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ",")
@@ -98,4 +100,13 @@ func getEnvInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+if v := os.Getenv(key); v != "" {
+if b, err := strconv.ParseBool(v); err == nil {
+return b
+}
+}
+return fallback
 }
