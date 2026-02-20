@@ -74,16 +74,16 @@ func (r *NotificationRepo) ListUnread(ctx context.Context, userID string) ([]dom
 }
 
 func (r *NotificationRepo) MarkAsRead(ctx context.Context, notificationID string) (*domain.Notification, error) {
-	expr, names, values, err := buildUpdateExpr(map[string]interface{}{"readed": 1})
+	ue, err := buildUpdateExpr(map[string]interface{}{fieldReaded: 1})
 	if err != nil {
 		return nil, err
 	}
 	out, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("notification_id", notificationID),
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		UpdateExpression:          aws.String(ue.Expr),
+		ExpressionAttributeNames:  ue.Names,
+		ExpressionAttributeValues: ue.Values,
 		ReturnValues:              types.ReturnValueAllNew,
 	})
 	if err != nil {

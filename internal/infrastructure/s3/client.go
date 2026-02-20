@@ -1,12 +1,9 @@
 package s3infra
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -70,16 +67,6 @@ func (s *Store) Upload(ctx context.Context, key string, r io.Reader, contentType
 	return fmt.Sprintf("s3://%s/%s", s.bucket, key), nil
 }
 
-// UploadBase64 decodes base64 data and uploads it to S3.
-func (s *Store) UploadBase64(ctx context.Context, key, b64Data string) (string, error) {
-	decoded, err := base64.StdEncoding.DecodeString(b64Data)
-	if err != nil {
-		return "", fmt.Errorf("decode base64: %w", err)
-	}
-	contentType := detectContentType(key)
-	return s.Upload(ctx, key, bytes.NewReader(decoded), contentType)
-}
-
 // Download retrieves a file from S3 and returns its stream.
 func (s *Store) Download(ctx context.Context, key string) (io.ReadCloser, error) {
 	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
@@ -112,19 +99,5 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 		Key:    aws.String(key),
 	})
 	return err
-}
-
-func detectContentType(filename string) string {
-	lower := strings.ToLower(filename)
-	switch {
-	case strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg"):
-		return "image/jpeg"
-	case strings.HasSuffix(lower, ".png"):
-		return "image/png"
-	case strings.HasSuffix(lower, ".pdf"):
-		return "application/pdf"
-	default:
-		return "application/octet-stream"
-	}
 }
 

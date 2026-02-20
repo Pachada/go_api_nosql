@@ -5,7 +5,12 @@ import (
 	"strconv"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
+)
+
+// DynamoDB attribute names used in partial update maps.
+const (
+	fieldToken        = "token"
+	fieldAppVersionID = "app_version_id"
 )
 
 type Service interface {
@@ -17,12 +22,23 @@ type Service interface {
 	CheckVersion(ctx context.Context, sessionID string, version float64) (bool, error)
 }
 
-type service struct {
-	repo           *dynamo.DeviceRepo
-	appVersionRepo *dynamo.AppVersionRepo
+type deviceStore interface {
+	ListByUser(ctx context.Context, userID string) ([]domain.Device, error)
+	Get(ctx context.Context, deviceID string) (*domain.Device, error)
+	Update(ctx context.Context, deviceID string, updates map[string]interface{}) error
+	SoftDelete(ctx context.Context, deviceID string) error
 }
 
-func NewService(repo *dynamo.DeviceRepo, appVersionRepo *dynamo.AppVersionRepo) Service {
+type appVersionStore interface {
+	GetLatest(ctx context.Context) (*domain.AppVersion, error)
+}
+
+type service struct {
+	repo           deviceStore
+	appVersionRepo appVersionStore
+}
+
+func NewService(repo deviceStore, appVersionRepo appVersionStore) Service {
 	return &service{repo: repo, appVersionRepo: appVersionRepo}
 }
 
@@ -37,10 +53,10 @@ func (s *service) Get(ctx context.Context, deviceID string) (*domain.Device, err
 func (s *service) Update(ctx context.Context, deviceID string, req domain.UpdateDeviceRequest) (*domain.Device, error) {
 	updates := map[string]interface{}{}
 	if req.Token != nil {
-		updates["token"] = *req.Token
+		updates[fieldToken] = *req.Token
 	}
 	if req.AppVersionID != nil {
-		updates["app_version_id"] = *req.AppVersionID
+		updates[fieldAppVersionID] = *req.AppVersionID
 	}
 	if len(updates) == 0 {
 		return s.repo.Get(ctx, deviceID)

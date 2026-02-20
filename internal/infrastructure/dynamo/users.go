@@ -66,24 +66,24 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, 
 
 func (r *UserRepo) Update(ctx context.Context, userID string, updates map[string]interface{}) error {
 	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	expr, names, values, err := buildUpdateExpr(updates)
+	ue, err := buildUpdateExpr(updates)
 	if err != nil {
 		return err
 	}
 	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("user_id", userID),
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		UpdateExpression:          aws.String(ue.Expr),
+		ExpressionAttributeNames:  ue.Names,
+		ExpressionAttributeValues: ue.Values,
 	})
 	return err
 }
 
 func (r *UserRepo) SoftDelete(ctx context.Context, userID string) error {
 	return r.Update(ctx, userID, map[string]interface{}{
-		"enable":     false,
-		"deleted_at": time.Now().UTC().Format(time.RFC3339),
+		fieldEnable:    false,
+		fieldDeletedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

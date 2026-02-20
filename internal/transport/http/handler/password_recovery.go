@@ -12,10 +12,10 @@ import (
 
 // PasswordRecoveryHandler handles password recovery flow endpoints.
 type PasswordRecoveryHandler struct {
-	svc auth.Service
+	svc auth.PasswordRecoveryService
 }
 
-func NewPasswordRecoveryHandler(svc auth.Service) *PasswordRecoveryHandler {
+func NewPasswordRecoveryHandler(svc auth.PasswordRecoveryService) *PasswordRecoveryHandler {
 	return &PasswordRecoveryHandler{svc: svc}
 }
 
@@ -42,12 +42,12 @@ func (h *PasswordRecoveryHandler) Action(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
-		bearer, refreshToken, sess, err := h.svc.ValidateOTP(r.Context(), req)
+		result, err := h.svc.ValidateOTP(r.Context(), req)
 		if err != nil {
 			httpError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, AuthEnvelope{AccessToken: bearer, RefreshToken: refreshToken, Session: toSafeSession(sess), User: toSafeUser(sess.User)})
+		writeJSON(w, http.StatusOK, AuthEnvelope{AccessToken: result.Bearer, RefreshToken: result.RefreshToken, Session: toSafeSession(result.Session), User: toSafeUser(result.Session.User)})
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}

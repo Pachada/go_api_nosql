@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -64,29 +65,34 @@ func (r *SessionRepo) SoftDeleteByUser(ctx context.Context, userID string) error
 	if err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	var firstErr error
 	for _, item := range out.Items {
 		sidAttr, ok := item["session_id"].(*types.AttributeValueMemberS)
 		if !ok {
 			continue
 		}
-		_ = r.Update(ctx, sidAttr.Value, map[string]interface{}{"enable": false, "updated_at": now})
+		if err := r.Update(ctx, sidAttr.Value, map[string]interface{}{fieldEnable: false}); err != nil {
+			slog.Warn("failed to disable session during user soft-delete", "session_id", sidAttr.Value, "user_id", userID, "err", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
-	return nil
+	return firstErr
 }
 
 func (r *SessionRepo) Update(ctx context.Context, sessionID string, updates map[string]interface{}) error {
 	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	expr, names, values, err := buildUpdateExpr(updates)
+	ue, err := buildUpdateExpr(updates)
 	if err != nil {
 		return err
 	}
 	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("session_id", sessionID),
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		UpdateExpression:          aws.String(ue.Expr),
+		ExpressionAttributeNames:  ue.Names,
+		ExpressionAttributeValues: ue.Values,
 	})
 	return err
 }
@@ -121,7 +127,7 @@ func (r *SessionRepo) GetByRefreshToken(ctx context.Context, token string) (*dom
 // RotateRefreshToken replaces the refresh token and expiry on a session.
 func (r *SessionRepo) RotateRefreshToken(ctx context.Context, sessionID, newToken string, newExpiry int64) error {
 	return r.Update(ctx, sessionID, map[string]interface{}{
-		"refresh_token":      newToken,
-		"refresh_expires_at": newExpiry,
+		fieldRefreshToken:     newToken,
+		fieldRefreshExpiresAt: newExpiry,
 	})
 }

@@ -22,29 +22,37 @@ func compositeKey(pkName, pkValue, skName, skValue string) map[string]types.Attr
 	}
 }
 
+type updateExpr struct {
+	Expr   string
+	Names  map[string]string
+	Values map[string]types.AttributeValue
+}
+
 // buildUpdateExpr converts a map of field->value into a DynamoDB SET expression.
-func buildUpdateExpr(updates map[string]interface{}) (expr string, names map[string]string, values map[string]types.AttributeValue, err error) {
-	names = make(map[string]string)
-	values = make(map[string]types.AttributeValue)
-	expr = "SET "
+func buildUpdateExpr(updates map[string]interface{}) (updateExpr, error) {
+	ue := updateExpr{
+		Names:  make(map[string]string),
+		Values: make(map[string]types.AttributeValue),
+		Expr:   "SET ",
+	}
 	i := 0
 	for k, v := range updates {
 		nameKey := fmt.Sprintf("#f%d", i)
 		valueKey := fmt.Sprintf(":v%d", i)
-		names[nameKey] = k
+		ue.Names[nameKey] = k
 		av, mErr := attributevalue.Marshal(v)
 		if mErr != nil {
-			return "", nil, nil, fmt.Errorf("marshal field %s: %w", k, mErr)
+			return updateExpr{}, fmt.Errorf("marshal field %s: %w", k, mErr)
 		}
-		values[valueKey] = av
+		ue.Values[valueKey] = av
 		if i > 0 {
-			expr += ", "
+			ue.Expr += ", "
 		}
-		expr += fmt.Sprintf("%s = %s", nameKey, valueKey)
+		ue.Expr += fmt.Sprintf("%s = %s", nameKey, valueKey)
 		i++
 	}
 	if i == 0 {
-		return "", nil, nil, fmt.Errorf("no fields to update")
+		return updateExpr{}, fmt.Errorf("no fields to update")
 	}
-	return expr, names, values, nil
+	return ue, nil
 }

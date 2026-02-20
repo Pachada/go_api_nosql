@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
 	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// DynamoDB attribute name used in partial update maps.
+const fieldEnable = "enable"
 
 
 
@@ -36,21 +37,52 @@ type Service interface {
 	Refresh(ctx context.Context, refreshToken string) (bearer, newRefreshToken string, err error)
 }
 
-type service struct {
-	sessionRepo      *dynamo.SessionRepo
-	userRepo         *dynamo.UserRepo
-	deviceRepo       *dynamo.DeviceRepo
-	jwtProvider      *jwtinfra.Provider
-	refreshTokenDur  time.Duration
+type sessionStore interface {
+	Put(ctx context.Context, s *domain.Session) error
+	Get(ctx context.Context, sessionID string) (*domain.Session, error)
+	GetByRefreshToken(ctx context.Context, token string) (*domain.Session, error)
+	RotateRefreshToken(ctx context.Context, sessionID, newToken string, newExpiry int64) error
+	Update(ctx context.Context, sessionID string, updates map[string]interface{}) error
 }
 
-func NewService(sessionRepo *dynamo.SessionRepo, userRepo *dynamo.UserRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider, refreshTokenDur time.Duration) Service {
+type userStore interface {
+	GetByUsername(ctx context.Context, username string) (*domain.User, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	Get(ctx context.Context, userID string) (*domain.User, error)
+}
+
+type deviceStore interface {
+	GetByUUID(ctx context.Context, uuid string) (*domain.Device, error)
+	Put(ctx context.Context, d *domain.Device) error
+}
+
+type jwtSigner interface {
+	Sign(userID, deviceID, role, sessionID string) (string, error)
+}
+
+type service struct {
+	sessionRepo     sessionStore
+	userRepo        userStore
+	deviceRepo      deviceStore
+	jwtProvider     jwtSigner
+	refreshTokenDur time.Duration
+}
+
+type ServiceDeps struct {
+	SessionRepo     sessionStore
+	UserRepo        userStore
+	DeviceRepo      deviceStore
+	JWTProvider     jwtSigner
+	RefreshTokenDur time.Duration
+}
+
+func NewService(deps ServiceDeps) Service {
 	return &service{
-		sessionRepo:     sessionRepo,
-		userRepo:        userRepo,
-		deviceRepo:      deviceRepo,
-		jwtProvider:     jwtProvider,
-		refreshTokenDur: refreshTokenDur,
+		sessionRepo:     deps.SessionRepo,
+		userRepo:        deps.UserRepo,
+		deviceRepo:      deps.DeviceRepo,
+		jwtProvider:     deps.JWTProvider,
+		refreshTokenDur: deps.RefreshTokenDur,
 	}
 }
 
@@ -99,7 +131,7 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 }
 
 func (s *service) Logout(ctx context.Context, sessionID string) error {
-	return s.sessionRepo.Update(ctx, sessionID, map[string]interface{}{"enable": false})
+	return s.sessionRepo.Update(ctx, sessionID, map[string]interface{}{fieldEnable: false})
 }
 
 func (s *service) GetCurrent(ctx context.Context, sessionID string) (*domain.Session, error) {
@@ -153,4 +185,3 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	}
 	return bearer, newToken, nil
 }
-

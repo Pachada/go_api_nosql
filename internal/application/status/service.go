@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	"github.com/go-api-nosql/internal/pkg/id"
 )
+
+// DynamoDB attribute name used in partial update maps.
+const fieldDescription = "description"
 
 type Service interface {
 	List(ctx context.Context) ([]domain.Status, error)
@@ -16,11 +18,19 @@ type Service interface {
 	Delete(ctx context.Context, statusID string) error // hard delete
 }
 
-type service struct {
-	repo *dynamo.StatusRepo
+type statusStore interface {
+	Scan(ctx context.Context) ([]domain.Status, error)
+	Get(ctx context.Context, statusID string) (*domain.Status, error)
+	Put(ctx context.Context, s *domain.Status) error
+	Update(ctx context.Context, statusID string, updates map[string]interface{}) error
+	HardDelete(ctx context.Context, statusID string) error
 }
 
-func NewService(repo *dynamo.StatusRepo) Service {
+type service struct {
+	repo statusStore
+}
+
+func NewService(repo statusStore) Service {
 	return &service{repo: repo}
 }
 
@@ -44,7 +54,7 @@ func (s *service) Create(ctx context.Context, input domain.StatusInput) (*domain
 }
 
 func (s *service) Update(ctx context.Context, statusID string, input domain.StatusInput) (*domain.Status, error) {
-	if err := s.repo.Update(ctx, statusID, map[string]interface{}{"description": input.Description}); err != nil {
+	if err := s.repo.Update(ctx, statusID, map[string]interface{}{fieldDescription: input.Description}); err != nil {
 		return nil, err
 	}
 	return s.repo.Get(ctx, statusID)

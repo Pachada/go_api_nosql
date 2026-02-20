@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -43,7 +42,7 @@ func (r *VerificationRepo) Get(ctx context.Context, userID, verType string) (*do
 		return nil, err
 	}
 	if out.Item == nil {
-		return nil, errors.New("verification not found")
+		return nil, fmt.Errorf("verification not found: %w", domain.ErrNotFound)
 	}
 	var v domain.UserVerification
 	if err := attributevalue.UnmarshalMap(out.Item, &v); err != nil {

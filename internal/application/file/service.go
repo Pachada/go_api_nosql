@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	s3infra "github.com/go-api-nosql/internal/infrastructure/s3"
 	"github.com/go-api-nosql/internal/pkg/id"
 )
 
@@ -36,12 +34,24 @@ type Service interface {
 	GetBase64(ctx context.Context, fileID, requesterID string, isAdmin bool) (*domain.File, string, error)
 }
 
-type service struct {
-	s3       *s3infra.Store
-	fileRepo *dynamo.FileRepo
+type s3Store interface {
+	Upload(ctx context.Context, key string, r io.Reader, contentType string) (string, error)
+	Download(ctx context.Context, key string) (io.ReadCloser, error)
+	Delete(ctx context.Context, key string) error
 }
 
-func NewService(s3 *s3infra.Store, fileRepo *dynamo.FileRepo) Service {
+type fileStore interface {
+	Put(ctx context.Context, f *domain.File) error
+	Get(ctx context.Context, fileID string) (*domain.File, error)
+	SoftDelete(ctx context.Context, fileID string) error
+}
+
+type service struct {
+	s3       s3Store
+	fileRepo fileStore
+}
+
+func NewService(s3 s3Store, fileRepo fileStore) Service {
 	return &service{s3: s3, fileRepo: fileRepo}
 }
 

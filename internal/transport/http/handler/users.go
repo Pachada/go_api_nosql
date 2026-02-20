@@ -125,6 +125,9 @@ func parseCursorPagination(r *http.Request) (limit int, cursor string) {
 	if limit < 1 {
 		limit = 50
 	}
+	if limit > 100 {
+		limit = 100
+	}
 	cursor = r.URL.Query().Get("cursor")
 	return
 }

@@ -3,20 +3,26 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"math/big"
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
 	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
 	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
 	"golang.org/x/crypto/bcrypt"
+)
+
+// DynamoDB attribute names used in partial update maps.
+const (
+	fieldPasswordHash   = "password_hash"
+	fieldEmailConfirmed = "email_confirmed"
+	fieldPhoneConfirmed = "phone_confirmed"
 )
 
 type PasswordRecoveryRequest struct {
@@ -34,46 +40,92 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" validate:"required"`
 }
 
-type Service interface {
+type ValidateOTPResult struct {
+	Bearer       string
+	RefreshToken string
+	Session      *domain.Session
+}
+
+type PasswordRecoveryService interface {
 	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
-	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (bearer, refreshToken string, session *domain.Session, err error)
+	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error)
 	ChangePassword(ctx context.Context, userID, newPassword string) error
+}
+
+type EmailConfirmationService interface {
 	RequestEmailConfirmation(ctx context.Context, userID string) error
 	ValidateEmailToken(ctx context.Context, userID, token string) error
+}
+
+type PhoneConfirmationService interface {
 	RequestPhoneConfirmation(ctx context.Context, userID string) error
 	ValidatePhoneOTP(ctx context.Context, userID, otp string) error
 }
 
+// Service composes the three focused auth sub-services.
+type Service interface {
+	PasswordRecoveryService
+	EmailConfirmationService
+	PhoneConfirmationService
+}
+
+type verificationStore interface {
+	Put(ctx context.Context, v *domain.UserVerification) error
+	Get(ctx context.Context, userID, verType string) (*domain.UserVerification, error)
+	Delete(ctx context.Context, userID, verType string) error
+}
+
+type userStore interface {
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	Get(ctx context.Context, userID string) (*domain.User, error)
+	Update(ctx context.Context, userID string, updates map[string]interface{}) error
+}
+
+type sessionStore interface {
+	Put(ctx context.Context, s *domain.Session) error
+}
+
+type deviceStore interface {
+	GetByUUID(ctx context.Context, uuid string) (*domain.Device, error)
+	Put(ctx context.Context, d *domain.Device) error
+}
+
+type jwtSigner interface {
+	Sign(userID, deviceID, role, sessionID string) (string, error)
+}
+
 type service struct {
-	verificationRepo *dynamo.VerificationRepo
-	userRepo         *dynamo.UserRepo
-	sessionRepo      *dynamo.SessionRepo
-	deviceRepo       *dynamo.DeviceRepo
+	verificationRepo verificationStore
+	userRepo         userStore
+	sessionRepo      sessionStore
+	deviceRepo       deviceStore
 	mailer           smtp.Mailer
 	smsSender        sns.SMSSender
-	jwtProvider      *jwtinfra.Provider
+	jwtProvider      jwtSigner
 	refreshTokenDur  time.Duration
 }
 
-func NewService(
-	verificationRepo *dynamo.VerificationRepo,
-	userRepo *dynamo.UserRepo,
-	sessionRepo *dynamo.SessionRepo,
-	deviceRepo *dynamo.DeviceRepo,
-	mailer smtp.Mailer,
-	smsSender sns.SMSSender,
-	jwtProvider *jwtinfra.Provider,
-	refreshTokenDur time.Duration,
-) Service {
+type ServiceDeps struct {
+	VerificationRepo verificationStore
+	UserRepo         userStore
+	SessionRepo      sessionStore
+	DeviceRepo       deviceStore
+	Mailer           smtp.Mailer
+	SMSSender        sns.SMSSender
+	JWTProvider      jwtSigner
+	RefreshTokenDur  time.Duration
+}
+
+func NewService(deps ServiceDeps) Service {
 	return &service{
-		verificationRepo: verificationRepo,
-		userRepo:         userRepo,
-		sessionRepo:      sessionRepo,
-		deviceRepo:       deviceRepo,
-		mailer:           mailer,
-		smsSender:        smsSender,
-		jwtProvider:      jwtProvider,
-		refreshTokenDur:  refreshTokenDur,
+		verificationRepo: deps.VerificationRepo,
+		userRepo:         deps.UserRepo,
+		sessionRepo:      deps.SessionRepo,
+		deviceRepo:       deps.DeviceRepo,
+		mailer:           deps.Mailer,
+		smsSender:        deps.SMSSender,
+		jwtProvider:      deps.JWTProvider,
+		refreshTokenDur:  deps.RefreshTokenDur,
 	}
 }
 
@@ -91,11 +143,10 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return fmt.Errorf("email or phone_number required: %w", domain.ErrBadRequest)
 	}
 
-	n, err := rand.Int(rand.Reader, big.NewInt(999999))
+	otp, err := generateOTP()
 	if err != nil {
 		return err
 	}
-	otp := fmt.Sprintf("%06d", n.Int64())
 
 	v := &domain.UserVerification{
 		UserID:    u.UserID,
@@ -107,29 +158,26 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return err
 	}
 
-	if req.Email != nil {
-		return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
-	}
-	return s.smsSender.SendSMS(*req.PhoneNumber, "Your OTP: "+otp)
+	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
 }
 
-func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (string, string, *domain.Session, error) {
+func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error) {
 	if req.Email == nil {
-		return "", "", nil, fmt.Errorf("email required to validate OTP: %w", domain.ErrBadRequest)
+		return nil, fmt.Errorf("email required to validate OTP: %w", domain.ErrBadRequest)
 	}
 	u, err := s.userRepo.GetByEmail(ctx, *req.Email)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
+		return nil, fmt.Errorf("user not found: %w", domain.ErrNotFound)
 	}
 	v, err := s.verificationRepo.Get(ctx, u.UserID, "otp")
 	if err != nil {
-		return "", "", nil, fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
+		return nil, fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
 	}
-	if v.Code != req.OTP {
-		return "", "", nil, fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
+	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(req.OTP)) != 1 {
+		return nil, fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
-		return "", "", nil, fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
+		return nil, fmt.Errorf("OTP expired: %w", domain.ErrUnauthorized)
 	}
 	if err := s.verificationRepo.Delete(ctx, u.UserID, "otp"); err != nil {
 		slog.Warn("failed to delete OTP verification record", "user_id", u.UserID, "err", err)
@@ -137,11 +185,11 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 
 	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
 	if err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	refreshToken, err := pkgtoken.NewRefreshToken()
 	if err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	now := time.Now().UTC()
 	sess := &domain.Session{
@@ -155,14 +203,14 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (stri
 		UpdatedAt:        now,
 	}
 	if err := s.sessionRepo.Put(ctx, sess); err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	bearer, err := s.jwtProvider.Sign(u.UserID, dev.DeviceID, u.Role, sess.SessionID)
 	if err != nil {
-		return "", "", nil, err
+		return nil, err
 	}
 	sess.User = u
-	return bearer, refreshToken, sess, nil
+	return &ValidateOTPResult{Bearer: bearer, RefreshToken: refreshToken, Session: sess}, nil
 }
 
 func (s *service) ChangePassword(ctx context.Context, userID, newPassword string) error {
@@ -170,7 +218,7 @@ func (s *service) ChangePassword(ctx context.Context, userID, newPassword string
 	if err != nil {
 		return err
 	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{"password_hash": string(hash)})
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)})
 }
 
 func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) error {
@@ -199,7 +247,7 @@ func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) 
 	if err != nil {
 		return fmt.Errorf("token not found: %w", domain.ErrNotFound)
 	}
-	if v.Code != token {
+	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(token)) != 1 {
 		return fmt.Errorf("invalid token: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
@@ -208,7 +256,7 @@ func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) 
 	if err := s.verificationRepo.Delete(ctx, userID, "email"); err != nil {
 		slog.Warn("failed to delete email verification record", "user_id", userID, "err", err)
 	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{"email_confirmed": true})
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldEmailConfirmed: true})
 }
 
 func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) error {
@@ -219,11 +267,10 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if u.Phone == nil {
 		return fmt.Errorf("no phone number on account: %w", domain.ErrBadRequest)
 	}
-	n, err := rand.Int(rand.Reader, big.NewInt(999999))
+	otp, err := generateOTP()
 	if err != nil {
 		return err
 	}
-	otp := fmt.Sprintf("%06d", n.Int64())
 	v := &domain.UserVerification{
 		UserID:    userID,
 		Type:      "phone",
@@ -233,7 +280,7 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if err := s.verificationRepo.Put(ctx, v); err != nil {
 		return err
 	}
-	return s.smsSender.SendSMS(*u.Phone, "Your verification code: "+otp)
+	return s.smsSender.SendSMS(ctx, *u.Phone, "Your verification code: "+otp)
 }
 
 func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) error {
@@ -241,7 +288,7 @@ func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) erro
 	if err != nil {
 		return fmt.Errorf("OTP not found: %w", domain.ErrNotFound)
 	}
-	if v.Code != otp {
+	if subtle.ConstantTimeCompare([]byte(v.Code), []byte(otp)) != 1 {
 		return fmt.Errorf("invalid OTP: %w", domain.ErrUnauthorized)
 	}
 	if v.ExpiresAt < time.Now().Unix() {
@@ -250,7 +297,22 @@ func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) erro
 	if err := s.verificationRepo.Delete(ctx, userID, "phone"); err != nil {
 		slog.Warn("failed to delete phone verification record", "user_id", userID, "err", err)
 	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{"phone_confirmed": true})
+	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldPhoneConfirmed: true})
+}
+
+// generateOTP returns a 6-character cryptographically random uppercase alphanumeric code,
+// excluding visually ambiguous characters (0, 1, I, L, O) for easier manual entry.
+func generateOTP() (string, error) {
+	const chars = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+	b := make([]byte, 6)
+	for i := range b {
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = chars[idx.Int64()]
+	}
+	return string(b), nil
 }
 
 func generateToken(n int) (string, error) {

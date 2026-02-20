@@ -101,20 +101,20 @@ func (r *DeviceRepo) ListByUser(ctx context.Context, userID string) ([]domain.De
 
 func (r *DeviceRepo) Update(ctx context.Context, deviceID string, updates map[string]interface{}) error {
 	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	expr, names, values, err := buildUpdateExpr(updates)
+	ue, err := buildUpdateExpr(updates)
 	if err != nil {
 		return err
 	}
 	_, err = r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:                 aws.String(r.tableName),
 		Key:                       strKey("device_id", deviceID),
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		UpdateExpression:          aws.String(ue.Expr),
+		ExpressionAttributeNames:  ue.Names,
+		ExpressionAttributeValues: ue.Values,
 	})
 	return err
 }
 
 func (r *DeviceRepo) SoftDelete(ctx context.Context, deviceID string) error {
-	return r.Update(ctx, deviceID, map[string]interface{}{"enable": false})
+	return r.Update(ctx, deviceID, map[string]interface{}{fieldEnable: false})
 }

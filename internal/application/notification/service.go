@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 )
 
 type Service interface {
@@ -13,11 +12,17 @@ type Service interface {
 	MarkAsRead(ctx context.Context, notificationID, userID string) (*domain.Notification, error)
 }
 
-type service struct {
-	repo *dynamo.NotificationRepo
+type notificationStore interface {
+	ListUnread(ctx context.Context, userID string) ([]domain.Notification, error)
+	Get(ctx context.Context, notificationID string) (*domain.Notification, error)
+	MarkAsRead(ctx context.Context, notificationID string) (*domain.Notification, error)
 }
 
-func NewService(repo *dynamo.NotificationRepo) Service {
+type service struct {
+	repo notificationStore
+}
+
+func NewService(repo notificationStore) Service {
 	return &service{repo: repo}
 }
 

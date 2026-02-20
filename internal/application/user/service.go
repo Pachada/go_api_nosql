@@ -6,12 +6,22 @@ import (
 	"time"
 
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
-	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	pkgdevice "github.com/go-api-nosql/internal/pkg/device"
 	"github.com/go-api-nosql/internal/pkg/id"
 	pkgtoken "github.com/go-api-nosql/internal/pkg/token"
 	"golang.org/x/crypto/bcrypt"
+)
+
+// DynamoDB attribute names used in partial update maps.
+const (
+	fieldUsername  = "username"
+	fieldEmail     = "email"
+	fieldPhone     = "phone"
+	fieldFirstName = "first_name"
+	fieldLastName  = "last_name"
+	fieldBirthday  = "birthday"
+	fieldRole      = "role"
+	fieldEnable    = "enable"
 )
 
 type Service interface {
@@ -23,16 +33,54 @@ type Service interface {
 	Delete(ctx context.Context, userID string) error
 }
 
+type userStore interface {
+	GetByUsername(ctx context.Context, username string) (*domain.User, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	Put(ctx context.Context, u *domain.User) error
+	ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
+	Get(ctx context.Context, userID string) (*domain.User, error)
+	Update(ctx context.Context, userID string, updates map[string]interface{}) error
+	SoftDelete(ctx context.Context, userID string) error
+}
+
+type sessionStore interface {
+	Put(ctx context.Context, s *domain.Session) error
+	SoftDeleteByUser(ctx context.Context, userID string) error
+}
+
+type deviceStore interface {
+	GetByUUID(ctx context.Context, uuid string) (*domain.Device, error)
+	Put(ctx context.Context, d *domain.Device) error
+}
+
+type jwtSigner interface {
+	Sign(userID, deviceID, role, sessionID string) (string, error)
+}
+
 type service struct {
-	repo            *dynamo.UserRepo
-	sessionRepo     *dynamo.SessionRepo
-	deviceRepo      *dynamo.DeviceRepo
-	jwtProvider     *jwtinfra.Provider
+	repo            userStore
+	sessionRepo     sessionStore
+	deviceRepo      deviceStore
+	jwtProvider     jwtSigner
 	refreshTokenDur time.Duration
 }
 
-func NewService(repo *dynamo.UserRepo, sessionRepo *dynamo.SessionRepo, deviceRepo *dynamo.DeviceRepo, jwtProvider *jwtinfra.Provider, refreshTokenDur time.Duration) Service {
-	return &service{repo: repo, sessionRepo: sessionRepo, deviceRepo: deviceRepo, jwtProvider: jwtProvider, refreshTokenDur: refreshTokenDur}
+type ServiceDeps struct {
+	UserRepo        userStore
+	SessionRepo     sessionStore
+	DeviceRepo      deviceStore
+	JWTProvider     jwtSigner
+	RefreshTokenDur time.Duration
+}
+
+func NewService(deps ServiceDeps) Service {
+	return &service{
+		repo:            deps.UserRepo,
+		sessionRepo:     deps.SessionRepo,
+		deviceRepo:      deps.DeviceRepo,
+		jwtProvider:     deps.JWTProvider,
+		refreshTokenDur: deps.RefreshTokenDur,
+	}
 }
 
 func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error) {
@@ -75,9 +123,6 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 }
 
 func (s *service) RegisterWithSession(ctx context.Context, req domain.CreateUserRequest) (*domain.Session, string, string, error) {
-	if s.jwtProvider == nil {
-		return nil, "", "", errNotImplemented
-	}
 	u, err := s.Register(ctx, req)
 	if err != nil {
 		return nil, "", "", err
@@ -126,37 +171,37 @@ func (s *service) Get(ctx context.Context, userID string) (*domain.User, error) 
 func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUserRequest) (*domain.User, error) {
 	updates := map[string]interface{}{}
 	if req.Username != nil {
-		updates["username"] = *req.Username
+		updates[fieldUsername] = *req.Username
 	}
 	if req.Email != nil {
-		updates["email"] = *req.Email
+		updates[fieldEmail] = *req.Email
 	}
 	if req.Phone != nil {
-		updates["phone"] = *req.Phone
+		updates[fieldPhone] = *req.Phone
 	}
 	if req.FirstName != nil {
-		updates["first_name"] = *req.FirstName
+		updates[fieldFirstName] = *req.FirstName
 	}
 	if req.LastName != nil {
-		updates["last_name"] = *req.LastName
+		updates[fieldLastName] = *req.LastName
 	}
 	if req.Birthday != nil {
 		t, err := time.Parse("2006-01-02", *req.Birthday)
 		if err != nil {
 			return nil, fmt.Errorf("birthday must be in YYYY-MM-DD format: %w", domain.ErrBadRequest)
 		}
-		updates["birthday"] = t
+		updates[fieldBirthday] = t
 	}
 	if req.Role != nil {
 		switch *req.Role {
 		case domain.RoleAdmin, domain.RoleUser:
-			updates["role"] = *req.Role
+			updates[fieldRole] = *req.Role
 		default:
 			return nil, fmt.Errorf("invalid role: %w", domain.ErrBadRequest)
 		}
 	}
 	if req.Enable != nil {
-		updates["enable"] = *req.Enable
+		updates[fieldEnable] = *req.Enable
 	}
 	if len(updates) == 0 {
 		return s.repo.Get(ctx, userID)

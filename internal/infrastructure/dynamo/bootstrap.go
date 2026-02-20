@@ -3,7 +3,7 @@ package dynamo
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -156,10 +156,10 @@ func createTable(ctx context.Context, client *dynamodb.Client, input *dynamodb.C
 		// ResourceInUseException means the table already exists — that's fine.
 		var riue *types.ResourceInUseException
 		if !errors.As(err, &riue) {
-			log.Printf("WARN: could not create table %s: %v", *input.TableName, err)
+			slog.Warn("could not create table", "table", *input.TableName, "err", err)
 		}
 	} else {
-		log.Printf("Created table: %s", *input.TableName)
+		slog.Info("created table", "table", *input.TableName)
 	}
 }
 
@@ -172,6 +172,6 @@ func enableTTL(ctx context.Context, client *dynamodb.Client, tableName, ttlAttr 
 		},
 	})
 	if err != nil {
-		log.Printf("WARN: could not enable TTL on %s: %v", tableName, err)
+		slog.Warn("could not enable TTL", "table", tableName, "err", err)
 	}
 }

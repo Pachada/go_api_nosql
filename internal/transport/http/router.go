@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -57,24 +58,43 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 		MaxAge:           300,
 	}))
 
-	var authMw func(http.Handler) http.Handler
-	if deps.JWTProvider != nil {
-		authMw = appmiddleware.Auth(deps.JWTProvider)
-	} else {
-		authMw = func(next http.Handler) http.Handler { return next }
+	if deps.JWTProvider == nil {
+		log.Fatal("JWT provider is required but was not initialized; check RSA key files")
 	}
+	authMw := appmiddleware.Auth(deps.JWTProvider)
 
 	// 5 requests/second, burst of 10 — applied to sensitive public endpoints.
 	sensitiveRL := appmiddleware.NewRateLimiter(ctx, rate.Limit(5), 10)
 
 	refreshDur := time.Duration(cfg.RefreshTokenExpiryDays) * 24 * time.Hour
-	sessionSvc := session.NewService(deps.SessionRepo, deps.UserRepo, deps.DeviceRepo, deps.JWTProvider, refreshDur)
-	userSvc := user.NewService(deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.JWTProvider, refreshDur)
+	sessionSvc := session.NewService(session.ServiceDeps{
+		SessionRepo:     deps.SessionRepo,
+		UserRepo:        deps.UserRepo,
+		DeviceRepo:      deps.DeviceRepo,
+		JWTProvider:     deps.JWTProvider,
+		RefreshTokenDur: refreshDur,
+	})
+	userSvc := user.NewService(user.ServiceDeps{
+		UserRepo:        deps.UserRepo,
+		SessionRepo:     deps.SessionRepo,
+		DeviceRepo:      deps.DeviceRepo,
+		JWTProvider:     deps.JWTProvider,
+		RefreshTokenDur: refreshDur,
+	})
 	statusSvc := status.NewService(deps.StatusRepo)
 	deviceSvc := device.NewService(deps.DeviceRepo, deps.AppVersionRepo)
 	notifSvc := notification.NewService(deps.NotificationRepo)
 	fileSvc := fileapp.NewService(deps.S3Store, deps.FileRepo)
-	authSvc := auth.NewService(deps.VerificationRepo, deps.UserRepo, deps.SessionRepo, deps.DeviceRepo, deps.Mailer, deps.SMSSender, deps.JWTProvider, refreshDur)
+	authSvc := auth.NewService(auth.ServiceDeps{
+		VerificationRepo: deps.VerificationRepo,
+		UserRepo:         deps.UserRepo,
+		SessionRepo:      deps.SessionRepo,
+		DeviceRepo:       deps.DeviceRepo,
+		Mailer:           deps.Mailer,
+		SMSSender:        deps.SMSSender,
+		JWTProvider:      deps.JWTProvider,
+		RefreshTokenDur:  refreshDur,
+	})
 
 	healthH := handler.NewHealthHandler()
 	sessionH := handler.NewSessionHandler(sessionSvc)
@@ -122,8 +142,8 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			r.Get("/files/s3/{id}", fileH.Download)
 			r.Delete("/files/s3/{id}", fileH.Delete)
 			r.Post("/password-recovery/change-password", pwH.ChangePassword)
-			r.Post("/confirm-email/{action}", emailH.Action)
-			r.Post("/confirm-phone/{action}", phoneH.Action)
+			r.With(sensitiveRL.Limit).Post("/confirm-email/{action}", emailH.Action)
+			r.With(sensitiveRL.Limit).Post("/confirm-phone/{action}", phoneH.Action)
 
 			// Admin-only routes
 			r.Group(func(r chi.Router) {
