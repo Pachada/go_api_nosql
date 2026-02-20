@@ -63,6 +63,7 @@ func main() {
 		FileRepo:         dynamo.NewFileRepo(dynamoClient, cfg.DynamoTables.Files),
 		VerificationRepo: dynamo.NewVerificationRepo(dynamoClient, cfg.DynamoTables.UserVerifications),
 		AppVersionRepo:   dynamo.NewAppVersionRepo(dynamoClient, cfg.DynamoTables.AppVersions),
+DynamoClient:     dynamoClient,
 		S3Store:          s3Store,
 		Mailer:           mailer,
 		SMSSender:        smsSender,
@@ -100,3 +101,4 @@ func main() {
 	routerCancel()
 	log.Println("Server stopped")
 }
+
