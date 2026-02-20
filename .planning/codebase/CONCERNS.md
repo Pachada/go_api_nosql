@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-02-20
+**Analysis Date:** 2026-02-20 | **Last updated:** 2026-02-20
 
 ## Tech Debt
 
@@ -16,22 +16,11 @@
 - Impact: Inefficient at scale; admin list endpoint (`GET /v1/users`) degrades as table grows
 - Fix approach: Add a GSI on `enable` (or use a sparse GSI pattern) and switch to `Query`
 
-**`buildUpdateExpr` iterates a `map[string]interface{}` with non-deterministic order:**
-- Issue: ~~`internal/infrastructure/dynamo/helpers.go` builds the `SET` expression from a Go map. Map iteration order is random, so the generated expression string varies across calls (though DynamoDB semantics are unaffected).~~
-- **Status: Fixed** — keys are now sorted with `sort.Strings` before building the expression.
-- Files: `internal/infrastructure/dynamo/helpers.go`
-
-**Typo: `fieldReaded` constant:**
-- Issue: `internal/infrastructure/dynamo/fields.go` defines `fieldReaded = "readed"`. Correct English is "read" (past tense is same as present).
-- Files: `internal/infrastructure/dynamo/fields.go` (line 8)
-- Impact: The DynamoDB attribute is named `readed` in storage; renaming requires a data migration
-- Fix approach: Leave the DynamoDB attribute name as-is for now; rename the Go constant to `fieldRead` and update callers
-
 ## Known Bugs
 
 **Phone password recovery silently returns error:**
 - Symptoms: `POST /v1/password-recovery/{action}` with `phone_number` (no email) returns 400 "phone recovery not supported; provide email"
-- Files: `internal/application/auth/service.go` (line 141)
+- Files: `internal/application/auth/service.go`
 - Trigger: Any client that sends `phone_number` instead of `email` in recovery request
 - Workaround: Always use `email` field for password recovery
 
@@ -48,12 +37,6 @@
 - Files: `internal/transport/http/middleware/ratelimit.go` (line 97)
 - Current mitigation: Security note in comment; API Gateway is recommended as the proxy
 - Recommendations: Never expose the Go server directly to the internet; always front with API Gateway or a trusted reverse proxy
-
-**SMTP sends plain text emails without TLS enforcement:**
-- Risk: `net/smtp` is used with `smtp.PlainAuth`. If `SMTP_USERNAME` is set and the connection is not TLS-wrapped, credentials may be sent in plaintext.
-- Files: `internal/infrastructure/smtp/mailer.go`
-- Current mitigation: None
-- Recommendations: Use `smtp.Dial` with `StartTLS` or use a TLS-wrapped connection. For production, consider a managed email service (SES, SendGrid) instead.
 
 **OTP/token values sent in plain-text email/SMS body:**
 - Risk: OTP codes are included directly in the email/SMS body string without any formatting or expiry reminder.
@@ -93,28 +76,22 @@
 ## Dependencies at Risk
 
 **`net/smtp` (standard library):**
-- Risk: No HTML email support, no retry logic, no TLS enforcement by default
-- Impact: Email delivery reliability and security in production
+- Risk: No HTML email support, no retry logic
+- Impact: Email delivery reliability in production (TLS now enforced via `SMTP_TLS=true`)
 - Migration plan: Switch to AWS SES SDK or a transactional email provider (SendGrid, Postmark)
 
 ## Missing Critical Features
 
-**Zero test coverage:**
-- ~~Problem: No `*_test.go` files exist anywhere in the codebase~~
-- **Status: Partially resolved** — 27 unit tests added across 6 files (see TESTING.md).
-- Remaining gaps: HTTP handlers (`internal/transport/http/handler/`), remaining application services (device, file, notification, session, status), DynamoDB repo integration tests.
+**Test coverage gaps:**
+- **Status: Partially resolved** — 27 unit tests across 6 files (see TESTING.md). Middleware fully covered.
+- Remaining gaps: HTTP handlers (`internal/transport/http/handler/`), application services (device, file, notification, session, status), DynamoDB repo integration tests.
 - Recommended next steps:
   1. Handler tests for `internal/transport/http/handler/` (authorization logic, response shapes)
   2. Integration tests for DynamoDB repos against LocalStack
 
-**No health check that tests dependencies:**
-- Problem: `GET /v1/health-check/ping` returns static `"pong"` without checking DynamoDB or S3 connectivity
-- Files: `internal/transport/http/handler/health.go`
-- Blocks: Cannot use health check for load balancer / readiness probe accurately
-
 **Phone-based password recovery not implemented:**
 - Problem: `RequestPasswordRecovery` returns `ErrBadRequest` when `phone_number` is provided
-- Files: `internal/application/auth/service.go` (line 141)
+- Files: `internal/application/auth/service.go`
 - Blocks: SMS-only users cannot recover their accounts
 
 ## Test Coverage Gaps
@@ -126,8 +103,6 @@
 - Priority: Medium
 
 **DynamoDB helper functions:**
-- ~~What's not tested: `buildUpdateExpr`, cursor encode/decode in `users.go`~~
-- **`buildUpdateExpr`: Covered** (`internal/infrastructure/dynamo/helpers_test.go`)
 - Remaining: cursor encode/decode in `internal/infrastructure/dynamo/users.go`
 - Priority: Medium
 
@@ -137,11 +112,6 @@
 - Risk: Authorization logic bugs (e.g., self-update vs admin-update checks in `users.go`)
 - Priority: Medium
 
-**Middleware:**
-- ~~What's not tested: `auth.go`, `role.go`, `ratelimit.go`~~
-- **Status: Covered** (`auth_test.go`, `role_test.go`, `ratelimit_test.go` — 12 tests)
-- Priority: Done
-
 ---
 
-*Concerns audit: 2026-02-20*
+*Concerns audit: 2026-02-20 | Updated: 2026-02-20*
