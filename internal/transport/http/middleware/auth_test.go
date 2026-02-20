@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-api-nosql/internal/config"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/go-api-nosql/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

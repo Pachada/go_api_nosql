@@ -218,5 +218,3 @@ func (s *service) Delete(ctx context.Context, userID string) error {
 	}
 	return s.sessionRepo.SoftDeleteByUser(ctx, userID)
 }
-
-

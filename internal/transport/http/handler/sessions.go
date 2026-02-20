@@ -83,4 +83,3 @@ func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "logged out"})
 }
-

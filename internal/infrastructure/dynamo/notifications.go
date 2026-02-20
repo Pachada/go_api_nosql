@@ -95,4 +95,3 @@ func (r *NotificationRepo) MarkAsRead(ctx context.Context, notificationID string
 	}
 	return &n, nil
 }
-

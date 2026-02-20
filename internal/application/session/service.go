@@ -16,8 +16,6 @@ import (
 // DynamoDB attribute name used in partial update maps.
 const fieldEnable = "enable"
 
-
-
 type LoginRequest struct {
 	Username   string  `json:"username" validate:"required"`
 	Password   string  `json:"password" validate:"required"`
@@ -168,7 +166,7 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (string, str
 	if err != nil {
 		return "", "", err
 	}
-	newExpiry:= time.Now().Add(s.refreshTokenDur).Unix()
+	newExpiry := time.Now().Add(s.refreshTokenDur).Unix()
 	if err := s.sessionRepo.RotateRefreshToken(ctx, sess.SessionID, newToken, newExpiry); err != nil {
 		return "", "", err
 	}

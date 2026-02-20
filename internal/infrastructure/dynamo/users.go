@@ -140,12 +140,12 @@ func decodeCursor(cursor string) (string, error) {
 
 func (r *UserRepo) queryGSI(ctx context.Context, index, attr, value string) (*domain.User, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		IndexName:              aws.String(index),
-		KeyConditionExpression: aws.String("#a = :v"),
+		TableName:                 aws.String(r.tableName),
+		IndexName:                 aws.String(index),
+		KeyConditionExpression:    aws.String("#a = :v"),
 		ExpressionAttributeNames:  map[string]string{"#a": attr},
 		ExpressionAttributeValues: map[string]types.AttributeValue{":v": &types.AttributeValueMemberS{Value: value}},
-		Limit:                  aws.Int32(1),
+		Limit:                     aws.Int32(1),
 	})
 	if err != nil {
 		return nil, err

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/auth"
 	"github.com/go-api-nosql/internal/pkg/validate"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // PasswordRecoveryHandler handles password recovery flow endpoints.
@@ -74,4 +74,3 @@ func (h *PasswordRecoveryHandler) ChangePassword(w http.ResponseWriter, r *http.
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "password changed"})
 }
-

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	fileapp "github.com/go-api-nosql/internal/application/file"
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // FileHandler handles S3 file endpoints.
@@ -134,4 +134,3 @@ func sanitizeHeaderFilename(name string) string {
 	name = strings.ReplaceAll(name, "\n", "")
 	return strings.ReplaceAll(name, "\"", "\\\"")
 }
-

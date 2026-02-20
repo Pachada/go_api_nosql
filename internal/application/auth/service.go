@@ -132,14 +132,15 @@ func NewService(deps ServiceDeps) Service {
 func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error {
 	var u *domain.User
 	var err error
-	if req.Email != nil {
+	switch {
+	case req.Email != nil:
 		u, err = s.userRepo.GetByEmail(ctx, *req.Email)
 		if err != nil {
 			return fmt.Errorf("user not found: %w", domain.ErrNotFound)
 		}
-	} else if req.PhoneNumber != nil {
+	case req.PhoneNumber != nil:
 		return fmt.Errorf("phone recovery not supported; provide email: %w", domain.ErrBadRequest)
-	} else {
+	default:
 		return fmt.Errorf("email or phone_number required: %w", domain.ErrBadRequest)
 	}
 
@@ -327,5 +328,3 @@ func generateToken(n int) (string, error) {
 	}
 	return string(b), nil
 }
-
-

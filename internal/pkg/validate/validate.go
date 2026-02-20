@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,8 +17,8 @@ var v = validator.New()
 // Returns a human-readable error string or nil.
 func Struct(s interface{}) error {
 	if err := v.Struct(s); err != nil {
-		ve, ok := err.(validator.ValidationErrors)
-		if !ok {
+		var ve validator.ValidationErrors
+		if !errors.As(err, &ve) {
 			return err
 		}
 		var msgs []string

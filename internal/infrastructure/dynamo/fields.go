@@ -5,8 +5,7 @@ package dynamo
 const (
 	fieldEnable           = "enable"
 	fieldDeletedAt        = "deleted_at"
-	fieldRead          = "readed"
+	fieldRead             = "readed"
 	fieldRefreshToken     = "refresh_token"
 	fieldRefreshExpiresAt = "refresh_expires_at"
 )
-

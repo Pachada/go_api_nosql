@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/user"
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/pkg/validate"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // UserHandler handles user CRUD endpoints.
@@ -131,4 +131,3 @@ func parseCursorPagination(r *http.Request) (limit int, cursor string) {
 	cursor = r.URL.Query().Get("cursor")
 	return
 }
-

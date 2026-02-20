@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/go-api-nosql/internal/config"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // Claims holds the JWT payload fields.
@@ -22,9 +22,9 @@ type Claims struct {
 
 // Provider signs and verifies RS256 JWTs.
 type Provider struct {
-	privateKey  *rsa.PrivateKey
-	publicKey   *rsa.PublicKey
-	expiryDays  int
+	privateKey *rsa.PrivateKey
+	publicKey  *rsa.PublicKey
+	expiryDays int
 }
 
 func NewProvider(cfg *config.Config) (*Provider, error) {

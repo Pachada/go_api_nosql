@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/auth"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // EmailConfirmHandler handles email confirmation flow endpoints.
@@ -48,4 +48,3 @@ func (h *EmailConfirmHandler) Action(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}
 }
-
