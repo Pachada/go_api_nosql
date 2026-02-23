@@ -32,7 +32,7 @@ func (m *mockUserStore) GetByEmail(ctx context.Context, email string) (*domain.U
 func (m *mockUserStore) Put(ctx context.Context, u *domain.User) error {
 	return m.Called(ctx, u).Error(0)
 }
-func (m *mockUserStore) ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error) {
+func (m *mockUserStore) QueryPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error) {
 	args := m.Called(ctx, limit, cursor)
 	return args.Get(0).([]domain.User), args.String(1), args.Error(2)
 }
@@ -153,7 +153,7 @@ func TestRegister_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "alice", u.Username)
 	assert.Equal(t, domain.RoleUser, u.Role)
-	assert.True(t, u.Enable)
+	assert.Equal(t, 1, u.Enable)
 	us.AssertExpectations(t)
 }
 

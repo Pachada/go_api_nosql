@@ -39,7 +39,7 @@ type userStore interface {
 	GetByUsername(ctx context.Context, username string) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	Put(ctx context.Context, u *domain.User) error
-	ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
+	QueryPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, updates map[string]interface{}) error
 	SoftDelete(ctx context.Context, userID string) error
@@ -114,7 +114,7 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 		LastName:     req.LastName,
 		Birthday:     birthday,
 		Role:         domain.RoleUser,
-		Enable:       true,
+		Enable:       1,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -163,7 +163,7 @@ func (s *service) List(ctx context.Context, limit int, cursor string) ([]domain.
 	if limit < 1 {
 		limit = 50
 	}
-	return s.repo.ScanPage(ctx, int32(limit), cursor)
+	return s.repo.QueryPage(ctx, int32(limit), cursor)
 }
 
 func (s *service) Get(ctx context.Context, userID string) (*domain.User, error) {
@@ -201,9 +201,6 @@ func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUs
 		default:
 			return nil, fmt.Errorf("invalid role: %w", domain.ErrBadRequest)
 		}
-	}
-	if req.Enable != nil {
-		updates[fieldEnable] = *req.Enable
 	}
 	if len(updates) == 0 {
 		return s.repo.Get(ctx, userID)

@@ -23,7 +23,7 @@ type SafeUser struct {
 	Verified       bool      `json:"verified"`
 	EmailConfirmed bool      `json:"email_confirmed"`
 	PhoneConfirmed bool      `json:"phone_confirmed"`
-	Enable         bool      `json:"enable"`
+	Enable         int       `json:"enable"`
 	CreatedAt      time.Time `json:"created"`
 	UpdatedAt      time.Time `json:"updated"`
 }

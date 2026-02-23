@@ -12,7 +12,7 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	Put(ctx context.Context, u *domain.User) error
-	ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
+	QueryPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, updates map[string]interface{}) error
 	SoftDelete(ctx context.Context, userID string) error

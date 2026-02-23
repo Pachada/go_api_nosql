@@ -99,8 +99,8 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if claims.Role != domain.RoleAdmin {
-		if req.Role != nil || req.Enable != nil {
-			writeError(w, http.StatusForbidden, "cannot set role or enable as non-admin")
+		if req.Role != nil {
+			writeError(w, http.StatusForbidden, "cannot set role as non-admin")
 			return
 		}
 	}
@@ -113,7 +113,17 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	targetID := chi.URLParam(r, "id")
+	if claims.UserID != targetID && claims.Role != domain.RoleAdmin {
+		writeError(w, http.StatusForbidden, "cannot delete another user")
+		return
+	}
+	if err := h.svc.Delete(r.Context(), targetID); err != nil {
 		httpError(w, err)
 		return
 	}

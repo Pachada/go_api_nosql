@@ -15,7 +15,7 @@ type User struct {
 	Verified       bool       `json:"verified" dynamodbav:"verified"`
 	EmailConfirmed bool       `json:"email_confirmed" dynamodbav:"email_confirmed"`
 	PhoneConfirmed bool       `json:"phone_confirmed" dynamodbav:"phone_confirmed"`
-	Enable         bool       `json:"enable" dynamodbav:"enable"`
+	Enable         int        `json:"enable" dynamodbav:"enable"`
 	DeletedAt      *time.Time `json:"deleted_at,omitempty" dynamodbav:"deleted_at"`
 	CreatedAt      time.Time  `json:"created" dynamodbav:"created_at"`
 	UpdatedAt      time.Time  `json:"updated" dynamodbav:"updated_at"`
@@ -40,5 +40,4 @@ type UpdateUserRequest struct {
 	LastName  *string `json:"last_name"`
 	Birthday  *string `json:"birthday"` // expected format: YYYY-MM-DD
 	Role      *string `json:"role"`
-	Enable    *bool   `json:"enable"`
 }

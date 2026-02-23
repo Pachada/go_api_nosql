@@ -21,6 +21,7 @@ func Bootstrap(ctx context.Context, client *dynamodb.Client, tables config.Dynam
 			{AttributeName: aws.String("user_id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("username"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("email"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("enable"), AttributeType: types.ScalarAttributeTypeN},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{AttributeName: aws.String("user_id"), KeyType: types.KeyTypeHash},
@@ -28,6 +29,7 @@ func Bootstrap(ctx context.Context, client *dynamodb.Client, tables config.Dynam
 		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 			gsi("username-index", "username", ""),
 			gsi("email-index", "email", ""),
+			gsi("enable-index", "enable", ""),
 		},
 	})
 

@@ -92,7 +92,7 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*LoginResult, er
 			return nil, fmt.Errorf("invalid credentials: %w", domain.ErrUnauthorized)
 		}
 	}
-	if !u.Enable {
+	if u.Enable == 0 {
 		return nil, fmt.Errorf("account disabled: %w", domain.ErrUnauthorized)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
