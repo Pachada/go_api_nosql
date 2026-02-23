@@ -21,6 +21,10 @@ func Bootstrap(ctx context.Context, client *dynamodb.Client, tables config.Dynam
 			{AttributeName: aws.String("user_id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("username"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("email"), AttributeType: types.ScalarAttributeTypeS},
+			// NOTE: `enable` is stored as a Number (N) to support the enable-index GSI.
+			// This is a breaking change from a prior boolean representation.
+			// Existing items with a boolean `enable` attribute must be migrated
+			// (false → 0, true → 1) before enable-index queries return correct results.
 			{AttributeName: aws.String("enable"), AttributeType: types.ScalarAttributeTypeN},
 		},
 		KeySchema: []types.KeySchemaElement{

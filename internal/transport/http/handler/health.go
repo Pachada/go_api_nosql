@@ -31,6 +31,7 @@ func (h *HealthHandler) Ping(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, MessageEnvelope{Message: "ok"})
 	default:
+		// Unknown action — reject with 400. Valid actions: "ping", "ready".
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}
 }

@@ -53,7 +53,10 @@ func (m *mailer) SendEmail(to, subject, body string) error {
 	}
 	defer c.Close()
 
-	if err := c.StartTLS(&tls.Config{ServerName: m.host}); err != nil {
+	if err := c.StartTLS(&tls.Config{
+		ServerName: m.host,
+		MinVersion: tls.VersionTLS12,
+	}); err != nil {
 		return fmt.Errorf("smtp starttls: %w", err)
 	}
 	if m.username != "" {

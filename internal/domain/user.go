@@ -40,4 +40,5 @@ type UpdateUserRequest struct {
 	LastName  *string `json:"last_name"`
 	Birthday  *string `json:"birthday"` // expected format: YYYY-MM-DD
 	Role      *string `json:"role"`
+	Enable    *int    `json:"enable"` // 1 = enabled, 0 = disabled
 }

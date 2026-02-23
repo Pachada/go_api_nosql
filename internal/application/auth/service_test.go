@@ -55,6 +55,9 @@ type mockSessionStore struct{ mock.Mock }
 func (m *mockSessionStore) Put(ctx context.Context, s *domain.Session) error {
 	return m.Called(ctx, s).Error(0)
 }
+func (m *mockSessionStore) SoftDeleteByUser(ctx context.Context, userID string) error {
+	return m.Called(ctx, userID).Error(0)
+}
 
 type mockDeviceStore struct{ mock.Mock }
 
@@ -255,6 +258,7 @@ func TestValidateOTP_HappyPath(t *testing.T) {
 	})).Return(nil)
 	ds.On("GetByUUID", mock.Anything, mock.Anything).Return(nil, domain.ErrNotFound)
 	ds.On("Put", mock.Anything, mock.AnythingOfType("*domain.Device")).Return(nil)
+	ss.On("SoftDeleteByUser", mock.Anything, "u1").Return(nil)
 	ss.On("Put", mock.Anything, mock.AnythingOfType("*domain.Session")).Return(nil)
 	jwt.On("Sign", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("bearer-token", nil)
 

@@ -23,7 +23,7 @@ type SafeUser struct {
 	Verified       bool      `json:"verified"`
 	EmailConfirmed bool      `json:"email_confirmed"`
 	PhoneConfirmed bool      `json:"phone_confirmed"`
-	Enable         int       `json:"enable"`
+	Enable         bool      `json:"enable"`
 	CreatedAt      time.Time `json:"created"`
 	UpdatedAt      time.Time `json:"updated"`
 }
@@ -62,7 +62,7 @@ func toSafeUser(u *domain.User) *SafeUser {
 		Verified:       u.Verified,
 		EmailConfirmed: u.EmailConfirmed,
 		PhoneConfirmed: u.PhoneConfirmed,
-		Enable:         u.Enable,
+		Enable:         u.Enable == 1,
 		CreatedAt:      u.CreatedAt,
 		UpdatedAt:      u.UpdatedAt,
 	}

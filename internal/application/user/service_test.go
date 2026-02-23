@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // --- mocks ---
@@ -231,6 +232,83 @@ func TestDelete_AlsoDeletesSessions(t *testing.T) {
 
 	svc := newService(us, ss, nil, nil)
 	err := svc.Delete(context.Background(), "u1")
+
+	require.NoError(t, err)
+	us.AssertExpectations(t)
+	ss.AssertExpectations(t)
+}
+
+// --- ChangePassword tests ---
+
+func TestChangePassword_UserNotFound(t *testing.T) {
+	us := &mockUserStore{}
+	us.On("Get", mock.Anything, "u1").Return(nil, domain.ErrNotFound)
+
+	svc := newService(us, &mockSessionStore{}, nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "old", "newpassword123")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	us.AssertExpectations(t)
+}
+
+func TestChangePassword_WrongCurrentPassword(t *testing.T) {
+	us := &mockUserStore{}
+	// bcrypt hash of "correctpassword"
+	hash, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.MinCost)
+	us.On("Get", mock.Anything, "u1").Return(&domain.User{UserID: "u1", PasswordHash: string(hash)}, nil)
+
+	svc := newService(us, &mockSessionStore{}, nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "wrongpassword", "newpassword123")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrUnauthorized)
+	us.AssertExpectations(t)
+}
+
+func TestChangePassword_RepoUpdateError(t *testing.T) {
+	us := &mockUserStore{}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("currentpassword"), bcrypt.MinCost)
+	storeErr := errors.New("dynamo error")
+	us.On("Get", mock.Anything, "u1").Return(&domain.User{UserID: "u1", PasswordHash: string(hash)}, nil)
+	us.On("Update", mock.Anything, "u1", mock.Anything).Return(storeErr)
+
+	svc := newService(us, &mockSessionStore{}, nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "currentpassword", "newpassword123")
+
+	require.Error(t, err)
+	assert.Equal(t, storeErr, err)
+	us.AssertExpectations(t)
+}
+
+func TestChangePassword_SessionCleanupError(t *testing.T) {
+	us := &mockUserStore{}
+	ss := &mockSessionStore{}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("currentpassword"), bcrypt.MinCost)
+	sessionErr := errors.New("session store error")
+	us.On("Get", mock.Anything, "u1").Return(&domain.User{UserID: "u1", PasswordHash: string(hash)}, nil)
+	us.On("Update", mock.Anything, "u1", mock.Anything).Return(nil)
+	ss.On("SoftDeleteByUser", mock.Anything, "u1").Return(sessionErr)
+
+	svc := newService(us, ss, nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "currentpassword", "newpassword123")
+
+	require.Error(t, err)
+	assert.Equal(t, sessionErr, err)
+	us.AssertExpectations(t)
+	ss.AssertExpectations(t)
+}
+
+func TestChangePassword_HappyPath(t *testing.T) {
+	us := &mockUserStore{}
+	ss := &mockSessionStore{}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("currentpassword"), bcrypt.MinCost)
+	us.On("Get", mock.Anything, "u1").Return(&domain.User{UserID: "u1", PasswordHash: string(hash)}, nil)
+	us.On("Update", mock.Anything, "u1", mock.Anything).Return(nil)
+	ss.On("SoftDeleteByUser", mock.Anything, "u1").Return(nil)
+
+	svc := newService(us, ss, nil, nil)
+	err := svc.ChangePassword(context.Background(), "u1", "currentpassword", "newpassword123")
 
 	require.NoError(t, err)
 	us.AssertExpectations(t)

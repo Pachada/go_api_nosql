@@ -20,8 +20,9 @@ import (
 )
 
 // newTestProvider generates a fresh RSA key pair, writes them to temp files,
-// and returns a *jwtinfra.Provider plus a cleanup function.
-func newTestProvider(t *testing.T) (*jwtinfra.Provider, func()) {
+// and returns a *jwtinfra.Provider. The temp directory is cleaned up automatically
+// by t.TempDir() when the test completes.
+func newTestProvider(t *testing.T) *jwtinfra.Provider {
 	t.Helper()
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -45,14 +46,13 @@ func newTestProvider(t *testing.T) (*jwtinfra.Provider, func()) {
 	}
 	p, err := jwtinfra.NewProvider(cfg)
 	require.NoError(t, err)
-	return p, func() {}
+	return p
 }
 
 func okHandler(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 
 func TestAuth_MissingHeader(t *testing.T) {
-	p, cleanup := newTestProvider(t)
-	defer cleanup()
+	p := newTestProvider(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
@@ -61,8 +61,7 @@ func TestAuth_MissingHeader(t *testing.T) {
 }
 
 func TestAuth_BadToken(t *testing.T) {
-	p, cleanup := newTestProvider(t)
-	defer cleanup()
+	p := newTestProvider(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer not-a-real-token")
@@ -86,8 +85,7 @@ func TestAuth_ExpiredToken(t *testing.T) {
 	signed, err := token.SignedString(privKey)
 	require.NoError(t, err)
 
-	p, cleanup := newTestProvider(t) // different key pair — will fail verification
-	defer cleanup()
+	p := newTestProvider(t) // different key pair — will fail verification
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+signed)
@@ -97,8 +95,7 @@ func TestAuth_ExpiredToken(t *testing.T) {
 }
 
 func TestAuth_ValidToken_InjectsClaims(t *testing.T) {
-	p, cleanup := newTestProvider(t)
-	defer cleanup()
+	p := newTestProvider(t)
 
 	signed, err := p.Sign("u1", "dev1", "user", "sess1")
 	require.NoError(t, err)

@@ -79,6 +79,7 @@ type userStore interface {
 
 type sessionStore interface {
 	Put(ctx context.Context, s *domain.Session) error
+	SoftDeleteByUser(ctx context.Context, userID string) error
 }
 
 type deviceStore interface {
@@ -141,7 +142,10 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 	}
 
 	if existing, err := s.verificationRepo.Get(ctx, u.UserID, "otp"); err == nil && existing.ExpiresAt > time.Now().Unix() {
-		return fmt.Errorf("OTP already sent, please wait before requesting a new one: %w", domain.ErrBadRequest)
+		remaining := existing.ExpiresAt - time.Now().Unix()
+		mins := remaining / 60
+		secs := remaining % 60
+		return fmt.Errorf("OTP already sent. Please wait %d minutes and %d seconds before requesting a new one: %w", mins, secs, domain.ErrBadRequest)
 	}
 
 	otp, err := generateOTP()
@@ -191,6 +195,11 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*Val
 	}
 	if err := s.userRepo.Update(ctx, u.UserID, map[string]interface{}{fieldPasswordHash: string(hash)}); err != nil {
 		return nil, err
+	}
+
+	// Invalidate all existing sessions — the account may have been compromised.
+	if err := s.sessionRepo.SoftDeleteByUser(ctx, u.UserID); err != nil {
+		slog.Warn("failed to invalidate sessions after password reset", "user_id", u.UserID, "err", err)
 	}
 
 	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)

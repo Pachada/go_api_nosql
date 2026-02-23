@@ -202,6 +202,12 @@ func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUs
 			return nil, fmt.Errorf("invalid role: %w", domain.ErrBadRequest)
 		}
 	}
+	if req.Enable != nil {
+		if *req.Enable != 0 && *req.Enable != 1 {
+			return nil, fmt.Errorf("enable must be 0 or 1: %w", domain.ErrBadRequest)
+		}
+		updates[fieldEnable] = *req.Enable
+	}
 	if len(updates) == 0 {
 		return s.repo.Get(ctx, userID)
 	}
@@ -230,5 +236,9 @@ func (s *service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if err != nil {
 		return err
 	}
-	return s.repo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)})
+	if err := s.repo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)}); err != nil {
+		return err
+	}
+	// Invalidate all sessions so other devices are logged out after a password change.
+	return s.sessionRepo.SoftDeleteByUser(ctx, userID)
 }

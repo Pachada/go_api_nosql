@@ -6,17 +6,17 @@ This document explains how to configure the GitHub Actions pipeline and AWS infr
 
 ## Overview
 
-The pipeline (`.github/workflows/ci.yml`) runs three sequential jobs on every push or pull request:
+The pipeline (`.github/workflows/ci.yml`) runs three sequential jobs on **manual dispatch** (`workflow_dispatch`):
 
 ```
-lint → test → build-and-push (push events only)
+lint → test → build-and-push
 ```
 
 | Job | Trigger | What it does |
 |---|---|---|
-| **lint** | push + PR | Runs `golangci-lint` against `.golangci.yml` |
-| **test** | push + PR | Runs `go test -race ./...` |
-| **build-and-push** | push to `main`/`develop` only | Builds the Docker image and pushes to ECR |
+| **lint** | manual dispatch | Runs `golangci-lint` against `.golangci.yml` |
+| **test** | manual dispatch | Runs `go test -race ./...` |
+| **build-and-push** | manual dispatch | Builds the Docker image and pushes to ECR |
 
 ---
 

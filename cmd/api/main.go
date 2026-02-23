@@ -94,11 +94,10 @@ func main() {
 
 	log.Println("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		cancel()
 		log.Fatalf("forced shutdown: %v", err)
 	}
-	cancel()
 	routerCancel()
 	log.Println("Server stopped")
 }
