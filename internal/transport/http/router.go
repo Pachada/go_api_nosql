@@ -138,6 +138,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			// Any authenticated user
 			r.Get("/users/{id}", userH.Get)
 			r.Put("/users/{id}", userH.Update)
+			r.Post("/users/me/password", userH.ChangePassword)
 			r.Get("/statuses", statusH.List)
 			r.Get("/statuses/{id}", statusH.Get)
 			r.Get("/devices", deviceH.List)

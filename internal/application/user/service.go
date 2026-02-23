@@ -14,14 +14,15 @@ import (
 
 // DynamoDB attribute names used in partial update maps.
 const (
-	fieldUsername  = "username"
-	fieldEmail     = "email"
-	fieldPhone     = "phone"
-	fieldFirstName = "first_name"
-	fieldLastName  = "last_name"
-	fieldBirthday  = "birthday"
-	fieldRole      = "role"
-	fieldEnable    = "enable"
+	fieldUsername     = "username"
+	fieldEmail        = "email"
+	fieldPhone        = "phone"
+	fieldFirstName    = "first_name"
+	fieldLastName     = "last_name"
+	fieldBirthday     = "birthday"
+	fieldRole         = "role"
+	fieldEnable       = "enable"
+	fieldPasswordHash = "password_hash"
 )
 
 type Service interface {
@@ -31,6 +32,7 @@ type Service interface {
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, req domain.UpdateUserRequest) (*domain.User, error)
 	Delete(ctx context.Context, userID string) error
+	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
 }
 
 type userStore interface {
@@ -217,4 +219,19 @@ func (s *service) Delete(ctx context.Context, userID string) error {
 		return err
 	}
 	return s.sessionRepo.SoftDeleteByUser(ctx, userID)
+}
+
+func (s *service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	u, err := s.repo.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("current password is incorrect: %w", domain.ErrUnauthorized)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.repo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)})
 }

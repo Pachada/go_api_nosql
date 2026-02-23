@@ -120,6 +120,34 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "deleted"})
 }
 
+// ChangePasswordRequest is the body for POST /v1/users/me/password.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password"     validate:"required,min=8,max=72"`
+}
+
+func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := validate.Struct(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if err := h.svc.ChangePassword(r.Context(), claims.UserID, req.CurrentPassword, req.NewPassword); err != nil {
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "password changed"})
+}
+
 func parseCursorPagination(r *http.Request) (limit int, cursor string) {
 	limit, _ = strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit < 1 {
