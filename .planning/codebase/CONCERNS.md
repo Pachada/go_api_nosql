@@ -4,12 +4,6 @@
 
 ## Tech Debt
 
-**Concrete infrastructure types in `Deps` struct:**
-- Issue: `internal/transport/http/router.go` `Deps` struct uses concrete `*dynamo.UserRepo`, `*dynamo.SessionRepo`, etc. instead of the same small interfaces the services define. This binds the transport wiring to DynamoDB specifically.
-- Files: `internal/transport/http/router.go` (lines 32–44)
-- Impact: Cannot swap DynamoDB for another store without editing `router.go`; harder to test router wiring
-- Fix approach: Change `Deps` fields to the same interface types already defined in each `application/` package
-
 **`ScanPage` uses DynamoDB full-table Scan:**
 - Issue: `internal/infrastructure/dynamo/users.go` `ScanPage` uses `Scan` with a `FilterExpression` on `enable`. DynamoDB applies the filter *after* reading pages, so it consumes read capacity for deleted items and may return fewer than `limit` items per page.
 - Files: `internal/infrastructure/dynamo/users.go` (line 93)

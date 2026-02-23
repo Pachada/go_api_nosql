@@ -17,9 +17,7 @@ import (
 	"github.com/go-api-nosql/internal/application/user"
 	"github.com/go-api-nosql/internal/config"
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
-	s3infra "github.com/go-api-nosql/internal/infrastructure/s3"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
 	"github.com/go-api-nosql/internal/transport/http/handler"
@@ -32,16 +30,16 @@ import (
 
 // Deps holds all infrastructure dependencies for the router.
 type Deps struct {
-	UserRepo         *dynamo.UserRepo
-	SessionRepo      *dynamo.SessionRepo
-	StatusRepo       *dynamo.StatusRepo
-	DeviceRepo       *dynamo.DeviceRepo
-	NotificationRepo *dynamo.NotificationRepo
-	FileRepo         *dynamo.FileRepo
-	VerificationRepo *dynamo.VerificationRepo
-	AppVersionRepo   *dynamo.AppVersionRepo
+	UserRepo         UserRepository
+	SessionRepo      SessionRepository
+	StatusRepo       StatusRepository
+	DeviceRepo       DeviceRepository
+	NotificationRepo NotificationRepository
+	FileRepo         FileRepository
+	VerificationRepo VerificationRepository
+	AppVersionRepo   AppVersionRepository
 	DynamoClient     *dynamodbsdk.Client
-	S3Store          *s3infra.Store
+	S3Store          ObjectStore
 	Mailer           smtp.Mailer
 	SMSSender        sns.SMSSender
 	JWTProvider      *jwtinfra.Provider
