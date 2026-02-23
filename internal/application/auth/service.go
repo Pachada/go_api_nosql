@@ -140,6 +140,10 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return fmt.Errorf("email or phone_number required: %w", domain.ErrBadRequest)
 	}
 
+	if existing, err := s.verificationRepo.Get(ctx, u.UserID, "otp"); err == nil && existing.ExpiresAt > time.Now().Unix() {
+		return fmt.Errorf("OTP already sent, please wait before requesting a new one: %w", domain.ErrBadRequest)
+	}
+
 	otp, err := generateOTP()
 	if err != nil {
 		return err
@@ -155,7 +159,8 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return err
 	}
 
-	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
+	body := fmt.Sprintf("Your password recovery OTP is: %s\n\nThis code expires in 15 minutes.\nIf you did not request this, please ignore this email.", otp)
+	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", body)
 }
 
 func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error) {
@@ -219,6 +224,10 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*Val
 }
 
 func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) error {
+	if existing, err := s.verificationRepo.Get(ctx, userID, "email"); err == nil && existing.ExpiresAt > time.Now().Unix() {
+		return fmt.Errorf("confirmation email already sent, please wait before requesting a new one: %w", domain.ErrBadRequest)
+	}
+
 	token, err := generateToken(32)
 	if err != nil {
 		return err
@@ -236,7 +245,8 @@ func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) e
 	if err != nil {
 		return err
 	}
-	return s.mailer.SendEmail(u.Email, "Confirm your email", "Token: "+token)
+	body := fmt.Sprintf("Your email confirmation token is: %s\n\nThis token expires in 24 hours.\nIf you did not request this, please ignore this email.", token)
+	return s.mailer.SendEmail(u.Email, "Confirm your email", body)
 }
 
 func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) error {
@@ -264,6 +274,10 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if u.Phone == nil {
 		return fmt.Errorf("no phone number on account: %w", domain.ErrBadRequest)
 	}
+	if existing, err := s.verificationRepo.Get(ctx, userID, "phone"); err == nil && existing.ExpiresAt > time.Now().Unix() {
+		return fmt.Errorf("OTP already sent, please wait before requesting a new one: %w", domain.ErrBadRequest)
+	}
+
 	otp, err := generateOTP()
 	if err != nil {
 		return err
@@ -277,7 +291,8 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if err := s.verificationRepo.Put(ctx, v); err != nil {
 		return err
 	}
-	return s.smsSender.SendSMS(ctx, *u.Phone, "Your verification code: "+otp)
+	msg := fmt.Sprintf("Your verification code: %s (expires in 15 min). If you did not request this, ignore this message.", otp)
+	return s.smsSender.SendSMS(ctx, *u.Phone, msg)
 }
 
 func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) error {

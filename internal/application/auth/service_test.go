@@ -142,6 +142,7 @@ func TestRequestPasswordRecovery_HappyPath(t *testing.T) {
 
 	user := &domain.User{UserID: "u1", Email: "a@b.com"}
 	us.On("GetByEmail", mock.Anything, "a@b.com").Return(user, nil)
+	vs.On("Get", mock.Anything, "u1", "otp").Return(nil, domain.ErrNotFound) // no existing OTP — cooldown check passes
 	vs.On("Put", mock.Anything, mock.AnythingOfType("*domain.UserVerification")).Return(nil)
 	ml.On("SendEmail", "a@b.com", mock.Anything, mock.Anything).Return(nil)
 
