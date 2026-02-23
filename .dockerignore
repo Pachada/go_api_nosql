@@ -1,0 +1,14 @@
+.git/
+.github/
+.idea/
+.vscode/
+.air.toml
+.env*
+*.pem
+tmp/
+infra/
+.planning/
+*.test
+*.out
+coverage.html
+vendor/
