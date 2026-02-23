@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -155,6 +156,7 @@ func httpError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrBadRequest):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
+		slog.Error("internal server error", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
 }
