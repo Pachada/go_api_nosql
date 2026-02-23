@@ -206,8 +206,9 @@ func TestValidateOTP_InvalidOTP(t *testing.T) {
 
 	svc := newService(vs, us, nil, nil, nil, nil, nil)
 	_, err := svc.ValidateOTP(context.Background(), ValidateOTPRequest{
-		OTP:   "BBBBBB",
-		Email: strPtr("a@b.com"),
+		OTP:         "BBBBBB",
+		NewPassword: "newpassword123",
+		Email:       strPtr("a@b.com"),
 	})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrUnauthorized))
@@ -225,8 +226,9 @@ func TestValidateOTP_ExpiredOTP(t *testing.T) {
 
 	svc := newService(vs, us, nil, nil, nil, nil, nil)
 	_, err := svc.ValidateOTP(context.Background(), ValidateOTPRequest{
-		OTP:   "AAAAAA",
-		Email: strPtr("a@b.com"),
+		OTP:         "AAAAAA",
+		NewPassword: "newpassword123",
+		Email:       strPtr("a@b.com"),
 	})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrUnauthorized))
@@ -246,6 +248,10 @@ func TestValidateOTP_HappyPath(t *testing.T) {
 		ExpiresAt: time.Now().Add(10 * time.Minute).Unix(),
 	}, nil)
 	vs.On("Delete", mock.Anything, "u1", "otp").Return(nil)
+	us.On("Update", mock.Anything, "u1", mock.MatchedBy(func(m map[string]interface{}) bool {
+		_, ok := m[fieldPasswordHash]
+		return ok
+	})).Return(nil)
 	ds.On("GetByUUID", mock.Anything, mock.Anything).Return(nil, domain.ErrNotFound)
 	ds.On("Put", mock.Anything, mock.AnythingOfType("*domain.Device")).Return(nil)
 	ss.On("Put", mock.Anything, mock.AnythingOfType("*domain.Session")).Return(nil)
@@ -253,29 +259,14 @@ func TestValidateOTP_HappyPath(t *testing.T) {
 
 	svc := newService(vs, us, ss, ds, nil, nil, jwt)
 	result, err := svc.ValidateOTP(context.Background(), ValidateOTPRequest{
-		OTP:   "AAAAAA",
-		Email: strPtr("a@b.com"),
+		OTP:         "AAAAAA",
+		NewPassword: "newpassword123",
+		Email:       strPtr("a@b.com"),
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, "bearer-token", result.Bearer)
 	assert.NotEmpty(t, result.RefreshToken)
-}
-
-// --- ChangePassword ---
-
-func TestChangePassword_HappyPath(t *testing.T) {
-	us := &mockUserStore{}
-	us.On("Update", mock.Anything, "u1", mock.MatchedBy(func(m map[string]interface{}) bool {
-		_, ok := m[fieldPasswordHash]
-		return ok
-	})).Return(nil)
-
-	svc := newService(nil, us, nil, nil, nil, nil, nil)
-	err := svc.ChangePassword(context.Background(), "u1", "newpassword123")
-
-	require.NoError(t, err)
-	us.AssertExpectations(t)
 }
 
 func strPtr(s string) *string { return &s }

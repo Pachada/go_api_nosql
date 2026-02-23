@@ -31,13 +31,10 @@ type PasswordRecoveryRequest struct {
 }
 
 type ValidateOTPRequest struct {
-	OTP        string  `json:"otp" validate:"required"`
-	DeviceUUID *string `json:"device_uuid"`
-	Email      *string `json:"email"`
-}
-
-type ChangePasswordRequest struct {
-	NewPassword string `json:"new_password" validate:"required"`
+	OTP         string  `json:"otp"          validate:"required"`
+	NewPassword string  `json:"new_password" validate:"required,min=8,max=72"`
+	DeviceUUID  *string `json:"device_uuid"`
+	Email       *string `json:"email"`
 }
 
 type ValidateOTPResult struct {
@@ -49,7 +46,6 @@ type ValidateOTPResult struct {
 type PasswordRecoveryService interface {
 	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
 	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error)
-	ChangePassword(ctx context.Context, userID, newPassword string) error
 }
 
 type EmailConfirmationService interface {
@@ -184,6 +180,14 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*Val
 		slog.Warn("failed to delete OTP verification record", "user_id", u.UserID, "err", err)
 	}
 
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.userRepo.Update(ctx, u.UserID, map[string]interface{}{fieldPasswordHash: string(hash)}); err != nil {
+		return nil, err
+	}
+
 	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
 	if err != nil {
 		return nil, err
@@ -212,14 +216,6 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*Val
 	}
 	sess.User = u
 	return &ValidateOTPResult{Bearer: bearer, RefreshToken: refreshToken, Session: sess}, nil
-}
-
-func (s *service) ChangePassword(ctx context.Context, userID, newPassword string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)})
 }
 
 func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) error {

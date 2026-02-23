@@ -153,7 +153,6 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			r.Get("/files/s3/base64/{id}", fileH.GetBase64)
 			r.Get("/files/s3/{id}", fileH.Download)
 			r.Delete("/files/s3/{id}", fileH.Delete)
-			r.Post("/password-recovery/change-password", pwH.ChangePassword)
 			r.With(sensitiveRL.Limit).Post("/confirm-email/{action}", emailH.Action)
 			r.With(sensitiveRL.Limit).Post("/confirm-phone/{action}", phoneH.Action)
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-api-nosql/internal/application/auth"
 	"github.com/go-api-nosql/internal/pkg/validate"
-	"github.com/go-api-nosql/internal/transport/http/middleware"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -51,26 +50,4 @@ func (h *PasswordRecoveryHandler) Action(w http.ResponseWriter, r *http.Request)
 	default:
 		writeError(w, http.StatusBadRequest, "unknown action")
 	}
-}
-
-func (h *PasswordRecoveryHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req auth.ChangePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := validate.Struct(&req); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
-	if err := h.svc.ChangePassword(r.Context(), claims.UserID, req.NewPassword); err != nil {
-		httpError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "password changed"})
 }
