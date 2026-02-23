@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 FROM public.ecr.aws/lambda/provided:al2023
 
 # Lambda Web Adapter forwards API Gateway payloads to the HTTP server.
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.0 \
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:latest \
     /lambda-adapter /opt/extensions/lambda-adapter
 
 COPY --from=builder /build/server /var/task/server

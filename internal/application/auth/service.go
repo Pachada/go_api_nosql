@@ -142,10 +142,7 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 	}
 
 	if existing, err := s.verificationRepo.Get(ctx, u.UserID, "otp"); err == nil && existing.ExpiresAt > time.Now().Unix() {
-		remaining := existing.ExpiresAt - time.Now().Unix()
-		mins := remaining / 60
-		secs := remaining % 60
-		return fmt.Errorf("OTP already sent. Please wait %d minutes and %d seconds before requesting a new one: %w", mins, secs, domain.ErrBadRequest)
+		return fmt.Errorf("OTP request rate limit exceeded. Please try again later: %w", domain.ErrBadRequest)
 	}
 
 	otp, err := generateOTP()

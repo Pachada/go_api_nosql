@@ -111,7 +111,8 @@ func (r *UserRepo) QueryPage(ctx context.Context, limit int32, cursor string) ([
 		input.ExclusiveStartKey = map[string]types.AttributeValue{
 			"user_id": &types.AttributeValueMemberS{Value: userID},
 			"enable":  &types.AttributeValueMemberN{Value: "1"},
-		}	}
+		}
+	}
 	out, err := r.client.Query(ctx, input)
 	if err != nil {
 		return nil, "", err

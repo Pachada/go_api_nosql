@@ -103,6 +103,10 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "cannot set role as non-admin")
 			return
 		}
+		if req.Enable != nil {
+			writeError(w, http.StatusForbidden, "cannot set enable as non-admin")
+			return
+		}
 	}
 	u, err := h.svc.Update(r.Context(), targetID, req)
 	if err != nil {
