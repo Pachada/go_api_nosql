@@ -100,4 +100,3 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	})
 	return err
 }
-

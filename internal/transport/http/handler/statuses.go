@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/status"
 	"github.com/go-api-nosql/internal/domain"
+	"github.com/go-chi/chi/v5"
 )
 
 // StatusHandler handles status endpoints.
@@ -70,4 +70,3 @@ func (h *StatusHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "status deleted"})
 }
-

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/device"
 	"github.com/go-api-nosql/internal/domain"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // DeviceHandler handles device endpoints.
@@ -125,4 +125,3 @@ func (h *DeviceHandler) CheckVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, MessageEnvelope{Message: "up to date"})
 }
-

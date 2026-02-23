@@ -1,0 +1,36 @@
+linters:
+  disable-all: true
+  enable:
+    # Correctness
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Style / bugs
+    - gofmt
+    - goimports
+    - misspell
+    - godot
+    - gocritic
+    - noctx
+    - bodyclose
+    - errorlint
+
+linters-settings:
+  godot:
+    scope: declarations
+  gocritic:
+    disabled-checks:
+      - commentedOutCode
+      - hugeParam
+
+issues:
+  exclude-rules:
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+        - gocritic
+  max-issues-per-linter: 50
+  max-same-issues: 5

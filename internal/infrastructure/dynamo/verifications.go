@@ -11,7 +11,7 @@ import (
 )
 
 // VerificationRepo manages OTP and email verification tokens.
-// PK: user_id, SK: type ("otp" | "email")
+// PK: user_id, SK: type ("otp" | "email").
 type VerificationRepo struct {
 	client    *dynamodb.Client
 	tableName string

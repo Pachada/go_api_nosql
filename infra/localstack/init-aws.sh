@@ -15,11 +15,13 @@ awslocal dynamodb create-table \
     AttributeName=user_id,AttributeType=S \
     AttributeName=username,AttributeType=S \
     AttributeName=email,AttributeType=S \
+    AttributeName=enable,AttributeType=N \
   --key-schema AttributeName=user_id,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
   --global-secondary-indexes \
     '[{"IndexName":"username-index","KeySchema":[{"AttributeName":"username","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}},
-      {"IndexName":"email-index","KeySchema":[{"AttributeName":"email","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]'
+      {"IndexName":"email-index","KeySchema":[{"AttributeName":"email","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}},
+      {"IndexName":"enable-index","KeySchema":[{"AttributeName":"enable","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]'
 
 awslocal dynamodb create-table \
   --table-name sessions \

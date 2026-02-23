@@ -31,13 +31,10 @@ type PasswordRecoveryRequest struct {
 }
 
 type ValidateOTPRequest struct {
-	OTP        string  `json:"otp" validate:"required"`
-	DeviceUUID *string `json:"device_uuid"`
-	Email      *string `json:"email"`
-}
-
-type ChangePasswordRequest struct {
-	NewPassword string `json:"new_password" validate:"required"`
+	OTP         string  `json:"otp"          validate:"required"`
+	NewPassword string  `json:"new_password" validate:"required,min=8,max=72"`
+	DeviceUUID  *string `json:"device_uuid"`
+	Email       *string `json:"email"`
 }
 
 type ValidateOTPResult struct {
@@ -49,7 +46,6 @@ type ValidateOTPResult struct {
 type PasswordRecoveryService interface {
 	RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error
 	ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error)
-	ChangePassword(ctx context.Context, userID, newPassword string) error
 }
 
 type EmailConfirmationService interface {
@@ -83,6 +79,7 @@ type userStore interface {
 
 type sessionStore interface {
 	Put(ctx context.Context, s *domain.Session) error
+	SoftDeleteByUser(ctx context.Context, userID string) error
 }
 
 type deviceStore interface {
@@ -132,15 +129,20 @@ func NewService(deps ServiceDeps) Service {
 func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecoveryRequest) error {
 	var u *domain.User
 	var err error
-	if req.Email != nil {
+	switch {
+	case req.Email != nil:
 		u, err = s.userRepo.GetByEmail(ctx, *req.Email)
 		if err != nil {
 			return fmt.Errorf("user not found: %w", domain.ErrNotFound)
 		}
-	} else if req.PhoneNumber != nil {
+	case req.PhoneNumber != nil:
 		return fmt.Errorf("phone recovery not supported; provide email: %w", domain.ErrBadRequest)
-	} else {
+	default:
 		return fmt.Errorf("email or phone_number required: %w", domain.ErrBadRequest)
+	}
+
+	if existing, err := s.verificationRepo.Get(ctx, u.UserID, "otp"); err == nil && existing.ExpiresAt > time.Now().Unix() {
+		return fmt.Errorf("OTP request rate limit exceeded. Please try again later: %w", domain.ErrBadRequest)
 	}
 
 	otp, err := generateOTP()
@@ -158,7 +160,8 @@ func (s *service) RequestPasswordRecovery(ctx context.Context, req PasswordRecov
 		return err
 	}
 
-	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", "Your OTP: "+otp)
+	body := fmt.Sprintf("Your password recovery OTP is: %s\n\nThis code expires in 15 minutes.\nIf you did not request this, please ignore this email.", otp)
+	return s.mailer.SendEmail(u.Email, "Password Recovery OTP", body)
 }
 
 func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*ValidateOTPResult, error) {
@@ -181,6 +184,19 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*Val
 	}
 	if err := s.verificationRepo.Delete(ctx, u.UserID, "otp"); err != nil {
 		slog.Warn("failed to delete OTP verification record", "user_id", u.UserID, "err", err)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.userRepo.Update(ctx, u.UserID, map[string]interface{}{fieldPasswordHash: string(hash)}); err != nil {
+		return nil, err
+	}
+
+	// Invalidate all existing sessions — the account may have been compromised.
+	if err := s.sessionRepo.SoftDeleteByUser(ctx, u.UserID); err != nil {
+		slog.Warn("failed to invalidate sessions after password reset", "user_id", u.UserID, "err", err)
 	}
 
 	dev, err := pkgdevice.Resolve(ctx, s.deviceRepo, req.DeviceUUID, u.UserID)
@@ -213,15 +229,11 @@ func (s *service) ValidateOTP(ctx context.Context, req ValidateOTPRequest) (*Val
 	return &ValidateOTPResult{Bearer: bearer, RefreshToken: refreshToken, Session: sess}, nil
 }
 
-func (s *service) ChangePassword(ctx context.Context, userID, newPassword string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	return s.userRepo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)})
-}
-
 func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) error {
+	if existing, err := s.verificationRepo.Get(ctx, userID, "email"); err == nil && existing.ExpiresAt > time.Now().Unix() {
+		return fmt.Errorf("confirmation email already sent, please wait before requesting a new one: %w", domain.ErrBadRequest)
+	}
+
 	token, err := generateToken(32)
 	if err != nil {
 		return err
@@ -239,7 +251,8 @@ func (s *service) RequestEmailConfirmation(ctx context.Context, userID string) e
 	if err != nil {
 		return err
 	}
-	return s.mailer.SendEmail(u.Email, "Confirm your email", "Token: "+token)
+	body := fmt.Sprintf("Your email confirmation token is: %s\n\nThis token expires in 24 hours.\nIf you did not request this, please ignore this email.", token)
+	return s.mailer.SendEmail(u.Email, "Confirm your email", body)
 }
 
 func (s *service) ValidateEmailToken(ctx context.Context, userID, token string) error {
@@ -267,6 +280,10 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if u.Phone == nil {
 		return fmt.Errorf("no phone number on account: %w", domain.ErrBadRequest)
 	}
+	if existing, err := s.verificationRepo.Get(ctx, userID, "phone"); err == nil && existing.ExpiresAt > time.Now().Unix() {
+		return fmt.Errorf("OTP already sent, please wait before requesting a new one: %w", domain.ErrBadRequest)
+	}
+
 	otp, err := generateOTP()
 	if err != nil {
 		return err
@@ -280,7 +297,8 @@ func (s *service) RequestPhoneConfirmation(ctx context.Context, userID string) e
 	if err := s.verificationRepo.Put(ctx, v); err != nil {
 		return err
 	}
-	return s.smsSender.SendSMS(ctx, *u.Phone, "Your verification code: "+otp)
+	msg := fmt.Sprintf("Your verification code: %s (expires in 15 min). If you did not request this, ignore this message.", otp)
+	return s.smsSender.SendSMS(ctx, *u.Phone, msg)
 }
 
 func (s *service) ValidatePhoneOTP(ctx context.Context, userID, otp string) error {
@@ -327,5 +345,3 @@ func generateToken(n int) (string, error) {
 	}
 	return string(b), nil
 }
-
-

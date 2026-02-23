@@ -14,14 +14,15 @@ import (
 
 // DynamoDB attribute names used in partial update maps.
 const (
-	fieldUsername  = "username"
-	fieldEmail     = "email"
-	fieldPhone     = "phone"
-	fieldFirstName = "first_name"
-	fieldLastName  = "last_name"
-	fieldBirthday  = "birthday"
-	fieldRole      = "role"
-	fieldEnable    = "enable"
+	fieldUsername     = "username"
+	fieldEmail        = "email"
+	fieldPhone        = "phone"
+	fieldFirstName    = "first_name"
+	fieldLastName     = "last_name"
+	fieldBirthday     = "birthday"
+	fieldRole         = "role"
+	fieldEnable       = "enable"
+	fieldPasswordHash = "password_hash"
 )
 
 type Service interface {
@@ -31,13 +32,14 @@ type Service interface {
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, req domain.UpdateUserRequest) (*domain.User, error)
 	Delete(ctx context.Context, userID string) error
+	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
 }
 
 type userStore interface {
 	GetByUsername(ctx context.Context, username string) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	Put(ctx context.Context, u *domain.User) error
-	ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
+	QueryPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error)
 	Get(ctx context.Context, userID string) (*domain.User, error)
 	Update(ctx context.Context, userID string, updates map[string]interface{}) error
 	SoftDelete(ctx context.Context, userID string) error
@@ -112,7 +114,7 @@ func (s *service) Register(ctx context.Context, req domain.CreateUserRequest) (*
 		LastName:     req.LastName,
 		Birthday:     birthday,
 		Role:         domain.RoleUser,
-		Enable:       true,
+		Enable:       1,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -161,7 +163,7 @@ func (s *service) List(ctx context.Context, limit int, cursor string) ([]domain.
 	if limit < 1 {
 		limit = 50
 	}
-	return s.repo.ScanPage(ctx, int32(limit), cursor)
+	return s.repo.QueryPage(ctx, int32(limit), cursor)
 }
 
 func (s *service) Get(ctx context.Context, userID string) (*domain.User, error) {
@@ -201,6 +203,9 @@ func (s *service) Update(ctx context.Context, userID string, req domain.UpdateUs
 		}
 	}
 	if req.Enable != nil {
+		if *req.Enable != 0 && *req.Enable != 1 {
+			return nil, fmt.Errorf("enable must be 0 or 1: %w", domain.ErrBadRequest)
+		}
 		updates[fieldEnable] = *req.Enable
 	}
 	if len(updates) == 0 {
@@ -218,5 +223,22 @@ func (s *service) Delete(ctx context.Context, userID string) error {
 	}
 	return s.sessionRepo.SoftDeleteByUser(ctx, userID)
 }
-
 
+func (s *service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	u, err := s.repo.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("current password is incorrect: %w", domain.ErrUnauthorized)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.Update(ctx, userID, map[string]interface{}{fieldPasswordHash: string(hash)}); err != nil {
+		return err
+	}
+	// Invalidate all sessions so other devices are logged out after a password change.
+	return s.sessionRepo.SoftDeleteByUser(ctx, userID)
+}

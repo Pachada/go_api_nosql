@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/auth"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // PhoneConfirmHandler handles phone confirmation flow endpoints.

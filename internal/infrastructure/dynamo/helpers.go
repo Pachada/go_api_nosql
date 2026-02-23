@@ -2,6 +2,7 @@ package dynamo
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -29,18 +30,23 @@ type updateExpr struct {
 }
 
 // buildUpdateExpr converts a map of field->value into a DynamoDB SET expression.
+// Keys are sorted to produce a deterministic expression string.
 func buildUpdateExpr(updates map[string]interface{}) (updateExpr, error) {
 	ue := updateExpr{
 		Names:  make(map[string]string),
 		Values: make(map[string]types.AttributeValue),
 		Expr:   "SET ",
 	}
-	i := 0
-	for k, v := range updates {
+	keys := make([]string, 0, len(updates))
+	for k := range updates {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for i, k := range keys {
 		nameKey := fmt.Sprintf("#f%d", i)
 		valueKey := fmt.Sprintf(":v%d", i)
 		ue.Names[nameKey] = k
-		av, mErr := attributevalue.Marshal(v)
+		av, mErr := attributevalue.Marshal(updates[k])
 		if mErr != nil {
 			return updateExpr{}, fmt.Errorf("marshal field %s: %w", k, mErr)
 		}
@@ -49,9 +55,8 @@ func buildUpdateExpr(updates map[string]interface{}) (updateExpr, error) {
 			ue.Expr += ", "
 		}
 		ue.Expr += fmt.Sprintf("%s = %s", nameKey, valueKey)
-		i++
 	}
-	if i == 0 {
+	if len(keys) == 0 {
 		return updateExpr{}, fmt.Errorf("no fields to update")
 	}
 	return ue, nil

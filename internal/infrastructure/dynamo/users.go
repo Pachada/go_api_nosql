@@ -82,23 +82,24 @@ func (r *UserRepo) Update(ctx context.Context, userID string, updates map[string
 
 func (r *UserRepo) SoftDelete(ctx context.Context, userID string) error {
 	return r.Update(ctx, userID, map[string]interface{}{
-		fieldEnable:    false,
+		fieldEnable:    0,
 		fieldDeletedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
-// ScanPage returns a page of enabled users.
+// QueryPage returns a page of enabled users via the enable-index GSI.
 // cursor is a base64-encoded user_id used as ExclusiveStartKey.
 // Returns the items, a next cursor (empty string when no more pages), and any error.
-func (r *UserRepo) ScanPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error) {
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String(r.tableName),
-		FilterExpression: aws.String("#en = :t"),
+func (r *UserRepo) QueryPage(ctx context.Context, limit int32, cursor string) ([]domain.User, string, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("enable-index"),
+		KeyConditionExpression: aws.String("#en = :active"),
 		ExpressionAttributeNames: map[string]string{
 			"#en": "enable",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":t": &types.AttributeValueMemberBOOL{Value: true},
+			":active": &types.AttributeValueMemberN{Value: "1"},
 		},
 		Limit: aws.Int32(limit),
 	}
@@ -109,13 +110,14 @@ func (r *UserRepo) ScanPage(ctx context.Context, limit int32, cursor string) ([]
 		}
 		input.ExclusiveStartKey = map[string]types.AttributeValue{
 			"user_id": &types.AttributeValueMemberS{Value: userID},
+			"enable":  &types.AttributeValueMemberN{Value: "1"},
 		}
 	}
-	out, err := r.client.Scan(ctx, input)
+	out, err := r.client.Query(ctx, input)
 	if err != nil {
 		return nil, "", err
 	}
-	var users []domain.User
+	users := make([]domain.User, 0, len(out.Items))
 	if err := attributevalue.UnmarshalListOfMaps(out.Items, &users); err != nil {
 		return nil, "", err
 	}
@@ -140,12 +142,12 @@ func decodeCursor(cursor string) (string, error) {
 
 func (r *UserRepo) queryGSI(ctx context.Context, index, attr, value string) (*domain.User, error) {
 	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		IndexName:              aws.String(index),
-		KeyConditionExpression: aws.String("#a = :v"),
+		TableName:                 aws.String(r.tableName),
+		IndexName:                 aws.String(index),
+		KeyConditionExpression:    aws.String("#a = :v"),
 		ExpressionAttributeNames:  map[string]string{"#a": attr},
 		ExpressionAttributeValues: map[string]types.AttributeValue{":v": &types.AttributeValueMemberS{Value: value}},
-		Limit:                  aws.Int32(1),
+		Limit:                     aws.Int32(1),
 	})
 	if err != nil {
 		return nil, err

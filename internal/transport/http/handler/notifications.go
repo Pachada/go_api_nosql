@@ -3,9 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-api-nosql/internal/application/notification"
 	"github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 // NotificationHandler handles notification endpoints.
@@ -44,4 +44,3 @@ func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, http.StatusOK, n)
 }
-

@@ -6,9 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	dynamodbsdk "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/go-api-nosql/internal/application/auth"
 	"github.com/go-api-nosql/internal/application/device"
 	fileapp "github.com/go-api-nosql/internal/application/file"
@@ -18,30 +17,40 @@ import (
 	"github.com/go-api-nosql/internal/application/user"
 	"github.com/go-api-nosql/internal/config"
 	"github.com/go-api-nosql/internal/domain"
-	"github.com/go-api-nosql/internal/infrastructure/dynamo"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
-	s3infra "github.com/go-api-nosql/internal/infrastructure/s3"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
 	"github.com/go-api-nosql/internal/transport/http/handler"
 	appmiddleware "github.com/go-api-nosql/internal/transport/http/middleware"
+	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"golang.org/x/time/rate"
 )
 
 // Deps holds all infrastructure dependencies for the router.
 type Deps struct {
-	UserRepo         *dynamo.UserRepo
-	SessionRepo      *dynamo.SessionRepo
-	StatusRepo       *dynamo.StatusRepo
-	DeviceRepo       *dynamo.DeviceRepo
-	NotificationRepo *dynamo.NotificationRepo
-	FileRepo         *dynamo.FileRepo
-	VerificationRepo *dynamo.VerificationRepo
-	AppVersionRepo   *dynamo.AppVersionRepo
-	S3Store          *s3infra.Store
+	UserRepo         UserRepository
+	SessionRepo      SessionRepository
+	StatusRepo       StatusRepository
+	DeviceRepo       DeviceRepository
+	NotificationRepo NotificationRepository
+	FileRepo         FileRepository
+	VerificationRepo VerificationRepository
+	AppVersionRepo   AppVersionRepository
+	DynamoClient     *dynamodbsdk.Client
+	S3Store          ObjectStore
 	Mailer           smtp.Mailer
 	SMSSender        sns.SMSSender
 	JWTProvider      *jwtinfra.Provider
+}
+
+// dynamoPinger adapts *dynamodb.Client to the handler.dbPinger interface.
+type dynamoPinger struct{ client *dynamodbsdk.Client }
+
+func (p *dynamoPinger) Ping(ctx context.Context) error {
+	_, err := p.client.ListTables(ctx, &dynamodbsdk.ListTablesInput{Limit: aws.Int32(1)})
+	return err
 }
 
 // NewRouter builds and returns the application router.
@@ -96,7 +105,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 		RefreshTokenDur:  refreshDur,
 	})
 
-	healthH := handler.NewHealthHandler()
+	healthH := handler.NewHealthHandler(&dynamoPinger{deps.DynamoClient})
 	sessionH := handler.NewSessionHandler(sessionSvc)
 	userH := handler.NewUserHandler(userSvc)
 	statusH := handler.NewStatusHandler(statusSvc)
@@ -127,6 +136,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			// Any authenticated user
 			r.Get("/users/{id}", userH.Get)
 			r.Put("/users/{id}", userH.Update)
+			r.Post("/users/me/password", userH.ChangePassword)
 			r.Get("/statuses", statusH.List)
 			r.Get("/statuses/{id}", statusH.Get)
 			r.Get("/devices", deviceH.List)
@@ -141,7 +151,6 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 			r.Get("/files/s3/base64/{id}", fileH.GetBase64)
 			r.Get("/files/s3/{id}", fileH.Download)
 			r.Delete("/files/s3/{id}", fileH.Delete)
-			r.Post("/password-recovery/change-password", pwH.ChangePassword)
 			r.With(sensitiveRL.Limit).Post("/confirm-email/{action}", emailH.Action)
 			r.With(sensitiveRL.Limit).Post("/confirm-phone/{action}", phoneH.Action)
 
