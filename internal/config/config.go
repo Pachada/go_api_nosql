@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds all runtime configuration loaded from environment variables.
@@ -18,7 +19,7 @@ type Config struct {
 	S3BucketName           string
 	JWTPrivateKeyPath      string
 	JWTPublicKeyPath       string
-	JWTExpiryDays          int
+	JWTExpiry              time.Duration
 	RefreshTokenExpiryDays int
 	SMTPHost               string
 	SMTPPort               string
@@ -64,7 +65,7 @@ func Load() *Config {
 		S3BucketName:           getEnv("S3_BUCKET_NAME", "go-api-files"),
 		JWTPrivateKeyPath:      getEnv("JWT_PRIVATE_KEY_PATH", "./private_key.pem"),
 		JWTPublicKeyPath:       getEnv("JWT_PUBLIC_KEY_PATH", "./public_key.pem"),
-		JWTExpiryDays:          getEnvInt("JWT_EXPIRY_DAYS", 7),
+		JWTExpiry:              getEnvDuration("JWT_EXPIRY", time.Hour),
 		RefreshTokenExpiryDays: getEnvInt("REFRESH_TOKEN_EXPIRY_DAYS", 30),
 		SMTPHost:               getEnv("SMTP_HOST", "localhost"),
 		SMTPPort:               getEnv("SMTP_PORT", "1025"),
@@ -106,6 +107,15 @@ func getEnvBool(key string, fallback bool) bool {
 	if v := os.Getenv(key); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			return b
+		}
+	}
+	return fallback
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
 		}
 	}
 	return fallback

@@ -41,7 +41,7 @@ func newTestProvider(t *testing.T) (*jwtinfra.Provider, func()) {
 	cfg := &config.Config{
 		JWTPrivateKeyPath: privPath,
 		JWTPublicKeyPath:  pubPath,
-		JWTExpiryDays:     1,
+		JWTExpiry:         24 * time.Hour,
 	}
 	p, err := jwtinfra.NewProvider(cfg)
 	require.NoError(t, err)

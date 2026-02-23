@@ -221,7 +221,7 @@ Lambda has a read-only filesystem except for `/tmp`. PEM key files cannot be bun
 |---|---|---|
 | `JWT_PRIVATE_KEY_PATH` | yes | `/tmp/private_key.pem` |
 | `JWT_PUBLIC_KEY_PATH` | yes | `/tmp/public_key.pem` |
-| `JWT_EXPIRY_DAYS` | no | `7` |
+| `JWT_EXPIRY` | no | `1h` |
 | `REFRESH_TOKEN_EXPIRY_DAYS` | no | `30` |
 
 ### SMTP (email)

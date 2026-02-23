@@ -24,7 +24,7 @@ type Claims struct {
 type Provider struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
-	expiryDays int
+	expiry     time.Duration
 }
 
 func NewProvider(cfg *config.Config) (*Provider, error) {
@@ -46,7 +46,7 @@ func NewProvider(cfg *config.Config) (*Provider, error) {
 		return nil, fmt.Errorf("parse public key: %w", err)
 	}
 
-	return &Provider{privateKey: privKey, publicKey: pubKey, expiryDays: cfg.JWTExpiryDays}, nil
+	return &Provider{privateKey: privKey, publicKey: pubKey, expiry: cfg.JWTExpiry}, nil
 }
 
 func (p *Provider) Sign(userID, deviceID, role, sessionID string) (string, error) {
@@ -56,7 +56,7 @@ func (p *Provider) Sign(userID, deviceID, role, sessionID string) (string, error
 		Role:      role,
 		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().AddDate(0, 0, p.expiryDays)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(p.expiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
