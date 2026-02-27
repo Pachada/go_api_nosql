@@ -71,6 +71,32 @@ func (h *SessionHandler) GetCurrent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SessionEnvelope{Session: toSafeSession(sess), User: toSafeUser(sess.User)})
 }
 
+func (h *SessionHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Credential string  `json:"credential"`
+		DeviceUUID *string `json:"device_uuid"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Credential == "" {
+		writeError(w, http.StatusBadRequest, "credential is required")
+		return
+	}
+	result, err := h.svc.LoginWithGoogle(r.Context(), req.Credential, req.DeviceUUID)
+	if err != nil {
+		httpError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, AuthEnvelope{
+		AccessToken:  result.Bearer,
+		RefreshToken: result.RefreshToken,
+		Session:      toSafeSession(result.Session),
+		User:         toSafeUser(result.Session.User),
+	})
+}
+
 func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok {

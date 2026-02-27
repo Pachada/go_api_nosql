@@ -17,6 +17,7 @@ import (
 	"github.com/go-api-nosql/internal/application/user"
 	"github.com/go-api-nosql/internal/config"
 	"github.com/go-api-nosql/internal/domain"
+	googleinfra "github.com/go-api-nosql/internal/infrastructure/google"
 	jwtinfra "github.com/go-api-nosql/internal/infrastructure/jwt"
 	"github.com/go-api-nosql/internal/infrastructure/smtp"
 	"github.com/go-api-nosql/internal/infrastructure/sns"
@@ -53,6 +54,23 @@ func (p *dynamoPinger) Ping(ctx context.Context) error {
 	return err
 }
 
+// googleVerifierAdapter adapts *googleinfra.Verifier to session.googleVerifier.
+type googleVerifierAdapter struct{ v *googleinfra.Verifier }
+
+func (a *googleVerifierAdapter) Verify(ctx context.Context, token string) (*session.GooglePayload, error) {
+	p, err := a.v.Verify(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	return &session.GooglePayload{
+		Sub:           p.Sub,
+		Email:         p.Email,
+		EmailVerified: p.EmailVerified,
+		FirstName:     p.FirstName,
+		LastName:      p.LastName,
+	}, nil
+}
+
 // NewRouter builds and returns the application router.
 func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler {
 	r := chi.NewRouter()
@@ -81,6 +99,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 		UserRepo:        deps.UserRepo,
 		DeviceRepo:      deps.DeviceRepo,
 		JWTProvider:     deps.JWTProvider,
+		GoogleVerifier:  &googleVerifierAdapter{v: googleinfra.NewVerifier(cfg.GoogleClientID)},
 		RefreshTokenDur: refreshDur,
 	})
 	userSvc := user.NewService(user.ServiceDeps{
@@ -122,6 +141,7 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 		r.Post("/health-check/{action}", healthH.Ping)
 		r.Get("/roles", handler.ListRoles)
 		r.With(sensitiveRL.Limit).Post("/sessions/login", sessionH.Login)
+		r.With(sensitiveRL.Limit).Post("/sessions/google", sessionH.GoogleLogin)
 		r.Post("/sessions/refresh", sessionH.Refresh)
 		r.With(sensitiveRL.Limit).Post("/users", userH.Register)
 		r.With(sensitiveRL.Limit).Post("/password-recovery/{action}", pwH.Action)
