@@ -77,6 +77,32 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  /v1/sessions/google:
+    post:
+      tags: [Sessions]
+      summary: Sign in with Google
+      description: |
+        Exchanges a Google ID token (from Google Identity Services) for app tokens.
+        Creates the user account automatically if it does not exist.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleLoginRequest'
+      responses:
+        '200':
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/sessions/refresh:
     post:
       tags: [Sessions]
@@ -910,6 +936,17 @@ components:
           type: string
           format: password
 
+    GoogleLoginRequest:
+      type: object
+      required: [credential]
+      properties:
+        credential:
+          type: string
+          description: "Google ID token returned by Google Identity Services (response.credential)"
+        device_uuid:
+          type: string
+          description: "Optional. Device UUID to associate the session with"
+
     ConfirmEmailValidateRequest:
       type: object
       required: [token]
@@ -1001,6 +1038,10 @@ components:
           type: string
           enum: [Admin, User]
           description: "Available roles: Admin, User"
+        auth_provider:
+          type: string
+          enum: [local, google]
+          description: "How the account was created. Omitted for legacy local accounts."
         last_name:
           type: string
         birthday:
