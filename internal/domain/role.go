@@ -5,3 +5,9 @@ const (
 	RoleAdmin = "Admin"
 	RoleUser  = "User"
 )
+
+// AuthProvider constants identify how a user account was created.
+const (
+	AuthProviderLocal  = "local"
+	AuthProviderGoogle = "google"
+)

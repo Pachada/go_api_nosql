@@ -15,6 +15,8 @@ type User struct {
 	Verified       bool       `json:"verified" dynamodbav:"verified"`
 	EmailConfirmed bool       `json:"email_confirmed" dynamodbav:"email_confirmed"`
 	PhoneConfirmed bool       `json:"phone_confirmed" dynamodbav:"phone_confirmed"`
+	AuthProvider   string     `json:"auth_provider,omitempty" dynamodbav:"auth_provider"` // "local" | "google"
+	GoogleSub      string     `json:"-"                       dynamodbav:"google_sub"`
 	Enable         int        `json:"enable" dynamodbav:"enable"`
 	DeletedAt      *time.Time `json:"deleted_at,omitempty" dynamodbav:"deleted_at"`
 	CreatedAt      time.Time  `json:"created" dynamodbav:"created_at"`

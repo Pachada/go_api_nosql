@@ -29,6 +29,7 @@ type Config struct {
 	SMTPTLSEnabled         bool // enforce STARTTLS; set SMTP_TLS=true in production
 	SNSRegion              string
 	AllowedOrigins         []string // CORS allowed origins
+	GoogleClientID         string
 }
 
 // DynamoTables holds the DynamoDB table name for each entity.
@@ -74,16 +75,8 @@ func Load() *Config {
 		SMTPPassword:           getEnv("SMTP_PASSWORD", ""),
 		SMTPTLSEnabled:         getEnvBool("SMTP_TLS", false),
 		SNSRegion:              getEnv("SNS_REGION", "us-east-1"),
-		AllowedOrigins: func() []string {
-			parts := strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ",")
-			result := make([]string, 0, len(parts))
-			for _, p := range parts {
-				if t := strings.TrimSpace(p); t != "" {
-					result = append(result, t)
-				}
-			}
-			return result
-		}(),
+		GoogleClientID: getEnv("GOOGLE_CLIENT_ID", ""),
+		AllowedOrigins:  getEnvStringSlice("ALLOWED_ORIGINS", "*"),
 	}
 }
 
@@ -119,4 +112,15 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 		}
 	}
 	return fallback
+}
+
+func getEnvStringSlice(key, fallback string) []string {
+	parts := strings.Split(getEnv(key, fallback), ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
