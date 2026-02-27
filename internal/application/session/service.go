@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode"
@@ -212,6 +213,12 @@ func (s *service) LoginWithGoogle(ctx context.Context, credential string, device
 	if !payload.EmailVerified {
 		return nil, fmt.Errorf("google email not verified: %w", domain.ErrUnauthorized)
 	}
+	if strings.TrimSpace(payload.Email) == "" {
+		return nil, fmt.Errorf("google email missing: %w", domain.ErrUnauthorized)
+	}
+	if payload.Sub == "" {
+		return nil, fmt.Errorf("google subject missing: %w", domain.ErrUnauthorized)
+	}
 
 	u, err := s.userRepo.GetByEmail(ctx, payload.Email)
 	if err != nil {
@@ -246,12 +253,24 @@ func (s *service) LoginWithGoogle(ctx context.Context, credential string, device
 		if u.Enable == 0 {
 			return nil, fmt.Errorf("account disabled: %w", domain.ErrUnauthorized)
 		}
+		if u.GoogleSub != "" && u.GoogleSub != payload.Sub {
+			return nil, fmt.Errorf("google account mismatch: %w", domain.ErrUnauthorized)
+		}
 		// Link Google sub on first OAuth sign-in for existing accounts.
+		// Only allowed if the account has a password set (i.e. self-registered).
+		// Admin-provisioned accounts with no password must link explicitly.
 		if u.GoogleSub == "" {
-			_ = s.userRepo.Update(ctx, u.UserID, map[string]interface{}{
+			if u.PasswordHash == "" {
+				return nil, fmt.Errorf("google linking not allowed for this account: %w", domain.ErrUnauthorized)
+			}
+			if err := s.userRepo.Update(ctx, u.UserID, map[string]interface{}{
 				"google_sub":    payload.Sub,
 				"auth_provider": domain.AuthProviderGoogle,
-			})
+			}); err != nil {
+				slog.Warn("failed to link google sub", "user_id", u.UserID, "error", err)
+			} else {
+				slog.Info("google account linked to existing account", "user_id", u.UserID, "email", payload.Email)
+			}
 			u.GoogleSub = payload.Sub
 			u.AuthProvider = domain.AuthProviderGoogle
 		}
@@ -305,7 +324,12 @@ func (s *service) deriveUsername(ctx context.Context, email string) (string, err
 		}
 		candidate = fmt.Sprintf("%s%d", base, i)
 	}
-	return candidate, nil
+	// Final check after loop exhaustion.
+	_, err := s.userRepo.GetByUsername(ctx, candidate)
+	if errors.Is(err, domain.ErrNotFound) {
+		return candidate, nil
+	}
+	return "", fmt.Errorf("unable to derive unique username from %q: %w", base, domain.ErrConflict)
 }
 
 // sanitizeUsername keeps only lowercase letters, digits, dots, underscores, and hyphens.

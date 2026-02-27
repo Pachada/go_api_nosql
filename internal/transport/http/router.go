@@ -88,6 +88,9 @@ func NewRouter(ctx context.Context, cfg *config.Config, deps *Deps) http.Handler
 	if deps.JWTProvider == nil {
 		log.Fatal("JWT provider is required but was not initialized; check RSA key files")
 	}
+	if cfg.GoogleClientID == "" {
+		log.Fatal("GOOGLE_CLIENT_ID is required but not set; add it to your environment")
+	}
 	authMw := appmiddleware.Auth(deps.JWTProvider)
 
 	// 5 requests/second, burst of 10 — applied to sensitive public endpoints.
